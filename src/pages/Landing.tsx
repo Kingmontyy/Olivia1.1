@@ -21,7 +21,7 @@ const Landing = () => {
                 Built for growth strategists, operations optimizers, and financial planners.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link to="/dashboard">
+                <Link to="/login">
                   <Button size="lg" className="font-semibold">
                     Start Free Trial
                   </Button>
@@ -102,7 +102,7 @@ const Landing = () => {
             <p className="text-lg mb-8 opacity-90 max-w-2xl mx-auto">
               Join growth strategists, operations teams, and financial planners using Olivia to drive data-backed growth.
             </p>
-            <Link to="/dashboard">
+            <Link to="/login">
               <Button size="lg" variant="secondary" className="font-semibold">
                 Get Started Today
               </Button>
