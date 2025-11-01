@@ -2,8 +2,7 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { TrendingUp, Database, LineChart, FolderKanban } from "lucide-react";
-import dashboardHero from "@/assets/dashboard-hero.png";
+import { TrendingUp, Database, LineChart, FolderKanban, LayoutDashboard } from "lucide-react";
 
 const Dashboard = () => {
   const workflows = [
@@ -43,21 +42,19 @@ const Dashboard = () => {
       
       <main className="container py-8">
         {/* Hero Banner */}
-        <div className="relative mb-section overflow-hidden rounded-xl">
-          <img 
-            src={dashboardHero} 
-            alt="Dashboard overview" 
-            className="w-full h-48 object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/95 to-background/60 flex items-center">
-            <div className="px-8">
-              <h1 className="font-display font-bold text-3xl mb-2">
-                Welcome to Your Dashboard
-              </h1>
-              <p className="text-muted-foreground text-lg">
-                Monitor performance, forecast outcomes, and make data-driven decisions.
-              </p>
+        <div className="mb-section">
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <LayoutDashboard className="w-10 h-10 text-primary" />
             </div>
+          </div>
+          <div className="text-center">
+            <h1 className="font-display font-bold text-3xl mb-2">
+              Welcome to Your Dashboard
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Monitor performance, forecast outcomes, and make data-driven decisions.
+            </p>
           </div>
         </div>
 

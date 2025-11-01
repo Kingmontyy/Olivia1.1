@@ -2,48 +2,21 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MoreVertical } from "lucide-react";
-import scenariosHero from "@/assets/scenarios-hero.png";
+import { MoreVertical, Layers } from "lucide-react";
+import { mockScenarios } from "@/lib/mock-data";
 
 const Scenarios = () => {
-  const savedScenarios = [
-    {
-      id: 1,
-      name: "10% Marketing Increase",
-      date: "Jan 15, 2025",
-      revenue: "$512K",
-      profit: "$98K",
-      status: "active"
-    },
-    {
-      id: 2,
-      name: "Product Line Expansion",
-      date: "Jan 12, 2025",
-      revenue: "$548K",
-      profit: "$102K",
-      status: "draft"
-    },
-    {
-      id: 3,
-      name: "Cost Optimization Plan",
-      date: "Jan 8, 2025",
-      revenue: "$487K",
-      profit: "$112K",
-      status: "active"
-    }
-  ];
-
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
       
       <main className="container py-8 max-w-6xl">
         <div className="mb-section">
-          <img 
-            src={scenariosHero} 
-            alt="Saved Scenarios" 
-            className="w-full h-48 object-cover rounded-lg mb-6"
-          />
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Layers className="w-10 h-10 text-primary" />
+            </div>
+          </div>
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-display font-bold text-3xl mb-2">
@@ -64,12 +37,12 @@ const Scenarios = () => {
             <CardHeader>
               <CardTitle>Saved Scenarios</CardTitle>
               <CardDescription>
-                {savedScenarios.length} scenarios saved
+                {mockScenarios.length} scenarios saved
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {savedScenarios.map((scenario) => (
+                {mockScenarios.map((scenario) => (
                   <div 
                     key={scenario.id}
                     className="flex items-center justify-between p-4 border rounded-lg hover:shadow-sm transition-shadow"
@@ -116,7 +89,7 @@ const Scenarios = () => {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-3 gap-4">
-                {savedScenarios.map((scenario) => (
+                {mockScenarios.map((scenario) => (
                   <div 
                     key={scenario.id}
                     className="p-4 border rounded-lg cursor-pointer hover:border-primary transition-colors"

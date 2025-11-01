@@ -1,30 +1,21 @@
 import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Circle } from "lucide-react";
-import dataConnectionHero from "@/assets/data-connection-hero.png";
+import { CheckCircle2, Circle, Database } from "lucide-react";
+import { mockDataSources } from "@/lib/mock-data";
 
 const DataConnection = () => {
-  const dataSources = [
-    { name: "QuickBooks", connected: true },
-    { name: "ShipHero", connected: true },
-    { name: "Google Sheets", connected: true },
-    { name: "American Express", connected: false },
-    { name: "Shopify", connected: true },
-    { name: "Mercury Bank", connected: false }
-  ];
-
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
       
       <main className="container py-8 max-w-5xl">
         <div className="mb-section">
-          <img 
-            src={dataConnectionHero} 
-            alt="Data Connection" 
-            className="w-full h-48 object-cover rounded-lg mb-6"
-          />
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Database className="w-10 h-10 text-primary" />
+            </div>
+          </div>
           <h1 className="font-display font-bold text-3xl mb-2">
             Initial Data Connection & Dashboard Setup
           </h1>
@@ -43,7 +34,7 @@ const DataConnection = () => {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-4">
-                {dataSources.map((source) => (
+                {mockDataSources.map((source) => (
                   <div 
                     key={source.name}
                     className="flex items-center justify-between p-4 border rounded-lg"

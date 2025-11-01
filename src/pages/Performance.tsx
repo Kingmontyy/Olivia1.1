@@ -2,7 +2,7 @@ import { Navigation } from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import performanceHero from "@/assets/performance-hero.png";
+import { Activity } from "lucide-react";
 
 const Performance = () => {
   return (
@@ -11,11 +11,11 @@ const Performance = () => {
       
       <main className="container py-8 max-w-6xl">
         <div className="mb-section">
-          <img 
-            src={performanceHero} 
-            alt="Performance Analysis" 
-            className="w-full h-48 object-cover rounded-lg mb-6"
-          />
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Activity className="w-10 h-10 text-primary" />
+            </div>
+          </div>
           <h1 className="font-display font-bold text-3xl mb-2">
             Understanding Current & Past Performance
           </h1>

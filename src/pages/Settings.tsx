@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import settingsHero from "@/assets/settings-hero.png";
+import { Settings as SettingsIcon } from "lucide-react";
 
 const Settings = () => {
   return (
@@ -13,11 +13,11 @@ const Settings = () => {
       
       <main className="container py-8 max-w-4xl">
         <div className="mb-section">
-          <img 
-            src={settingsHero} 
-            alt="Settings" 
-            className="w-full h-32 object-cover rounded-lg mb-6"
-          />
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <SettingsIcon className="w-10 h-10 text-primary" />
+            </div>
+          </div>
           <h1 className="font-display font-bold text-3xl mb-2">Settings</h1>
           <p className="text-muted-foreground">
             Manage your account preferences and connected data sources.

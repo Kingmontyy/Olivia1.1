@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import forecastingHero from "@/assets/forecasting-hero.png";
+import { LineChart } from "lucide-react";
 
 const Forecasting = () => {
   return (
@@ -12,11 +12,11 @@ const Forecasting = () => {
       
       <main className="container py-8 max-w-6xl">
         <div className="mb-section">
-          <img 
-            src={forecastingHero} 
-            alt="Forecasting & Scenario Planning" 
-            className="w-full h-48 object-cover rounded-lg mb-6"
-          />
+          <div className="flex justify-center mb-6">
+            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
+              <LineChart className="w-10 h-10 text-primary" />
+            </div>
+          </div>
           <h1 className="font-display font-bold text-3xl mb-2">
             Forecasting & Scenario Planning
           </h1>

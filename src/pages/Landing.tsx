@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Navigation } from "@/components/Navigation";
 import { Link } from "react-router-dom";
-import { TrendingUp, Brain, Target } from "lucide-react";
-import landingHero from "@/assets/landing-hero.png";
+import { TrendingUp, Brain, Target, LineChart } from "lucide-react";
 
 const Landing = () => {
   return (
@@ -32,12 +31,10 @@ const Landing = () => {
                 </Button>
               </div>
             </div>
-            <div className="relative">
-              <img 
-                src={landingHero} 
-                alt="Financial forecasting dashboard" 
-                className="rounded-lg shadow-lg w-full"
-              />
+            <div className="relative flex items-center justify-center">
+              <div className="w-full h-96 rounded-lg shadow-lg bg-primary/10 flex items-center justify-center">
+                <LineChart className="w-32 h-32 text-primary" />
+              </div>
             </div>
           </div>
         </div>
