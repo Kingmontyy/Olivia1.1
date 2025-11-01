@@ -55,6 +55,12 @@ const Dashboard = () => {
             <p className="text-muted-foreground text-lg">
               Monitor performance, forecast outcomes, and make data-driven decisions.
             </p>
+            <Button 
+              onClick={() => console.log("Connected!")} 
+              className="mt-4"
+            >
+              Test GitHub
+            </Button>
           </div>
         </div>
 
