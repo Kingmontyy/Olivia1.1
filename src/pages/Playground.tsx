@@ -1,59 +1,161 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AuthLayout } from "@/components/AuthLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Upload, FileSpreadsheet, Plus } from "lucide-react";
+import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import * as XLSX from "xlsx";
+
+interface UploadedFile {
+  id: string;
+  file_name: string;
+  file_type: string;
+  created_at: string;
+  edited_data: any;
+}
 
 const Playground = () => {
-  const [files, setFiles] = useState([
-    { id: "1", name: "Q4_Financials.xlsx", type: "xlsx", uploadedAt: "2024-01-15" },
-    { id: "2", name: "Sales_Data.csv", type: "csv", uploadedAt: "2024-01-10" },
-  ]);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    fetchFiles();
+  }, []);
+
+  const fetchFiles = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in to view your files");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("uploaded_files")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setFiles(data || []);
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      toast.error("Failed to load files");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const parseFileToJSON = async (file: File): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = e.target?.result;
+          const workbook = XLSX.read(data, { type: "binary" });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          resolve(jsonData);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsBinaryString(file);
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in to upload files");
+        return;
+      }
+
+      // Parse file to JSON
+      const parsedData = await parseFileToJSON(file);
+      
+      // Insert into Supabase
+      const { error } = await supabase
+        .from("uploaded_files")
+        .insert({
+          user_id: user.id,
+          file_name: file.name,
+          file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+          file_url: '', // We're storing parsed data, not the file itself
+          edited_data: parsedData
+        });
+
+      if (error) throw error;
+
       toast.success(`Uploaded: ${file.name}`);
-      // TODO: Implement actual file upload to Supabase
+      fetchFiles(); // Refresh the list
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      toast.error("Failed to upload file");
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDelete = async (fileId: string, fileName: string) => {
+    try {
+      const { error } = await supabase
+        .from("uploaded_files")
+        .delete()
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      toast.success(`Deleted: ${fileName}`);
+      fetchFiles(); // Refresh the list
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      toast.error("Failed to delete file");
     }
   };
 
   return (
     <AuthLayout>
       <div className="container py-8 max-w-6xl">
-        <div className="mb-8">
-          <h1 className="font-display font-bold text-3xl mb-2">Playground</h1>
-          <p className="text-muted-foreground">
-            Upload, edit, and manage your spreadsheets
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="font-display font-bold text-3xl mb-2">Playground</h1>
+            <p className="text-muted-foreground">
+              Upload, edit, and manage your spreadsheets
+            </p>
+          </div>
+          <Button 
+            onClick={handleUploadClick}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Upload
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.csv"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
         </div>
 
         <div className="grid gap-6 mb-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload New File</CardTitle>
-              <CardDescription>
-                Upload Excel (.xlsx) or CSV files to analyze
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-4">
-                <Input
-                  type="file"
-                  accept=".xlsx,.csv"
-                  onChange={handleFileUpload}
-                  className="flex-1"
-                />
-                <Button>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -68,32 +170,44 @@ const Playground = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileSpreadsheet className="h-8 w-8 text-primary" />
-                      <div>
-                        <p className="font-semibold">{file.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Uploaded {file.uploadedAt}
-                        </p>
+              {loading ? (
+                <p className="text-center text-muted-foreground py-8">Loading files...</p>
+              ) : files.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No files uploaded yet. Click the Upload button to get started.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="h-8 w-8 text-primary" />
+                        <div>
+                          <p className="font-semibold">{file.file_name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Uploaded {new Date(file.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm">
+                          Open Editor
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleDelete(file.id, file.file_name)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        Open Editor
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
