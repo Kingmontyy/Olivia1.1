@@ -12,6 +12,7 @@ import Performance from "./pages/Performance";
 import Forecasts from "./pages/Forecasts";
 import Scenarios from "./pages/Scenarios";
 import Playground from "./pages/Playground";
+import PlaygroundEditor from "./pages/PlaygroundEditor";
 import Favorites from "./pages/Favorites";
 import Vision from "./pages/Vision";
 import GettingStarted from "./pages/GettingStarted";
@@ -34,6 +35,7 @@ const App = () => (
           <Route path="/forecasts" element={<Forecasts />} />
           <Route path="/scenarios" element={<Scenarios />} />
           <Route path="/playground" element={<Playground />} />
+          <Route path="/playground/:fileId" element={<PlaygroundEditor />} />
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/vision" element={<Vision />} />
           <Route path="/settings" element={<Settings />} />

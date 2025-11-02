@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 
 interface UploadedFile {
@@ -19,6 +20,7 @@ const Playground = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchFiles();
@@ -193,7 +195,11 @@ const Playground = () => {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => navigate(`/playground/${file.id}`)}
+                        >
                           Open Editor
                         </Button>
                         <Button 
