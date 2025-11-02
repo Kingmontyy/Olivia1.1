@@ -1,39 +1,81 @@
-import { Button } from "@/components/ui/button";
-import { Navigation } from "@/components/Navigation";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { TrendingUp, Brain, Target, LineChart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BarChart3, TrendingUp, Brain, Target } from "lucide-react";
+import { LoginModal } from "@/components/LoginModal";
 
 const Landing = () => {
+  const [showNav, setShowNav] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [loginOpen, setLoginOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      setShowNav(currentScrollY < lastScrollY || currentScrollY < 10);
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
+    <div className="min-h-screen flex flex-col">
+      {/* Navigation */}
+      <nav
+        className={`border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+          showNav ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
+        <div className="container flex h-16 items-center justify-between">
+          <button
+            onClick={scrollToTop}
+            className="flex items-center gap-2 font-display font-bold text-xl hover:opacity-80 transition-opacity"
+          >
+            <BarChart3 className="h-6 w-6 text-primary" />
+            <span>Olivia</span>
+          </button>
+          
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => setLoginOpen(true)}>
+              Log In
+            </Button>
+            <Link to="/getting-started">
+              <Button>Get Started</Button>
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
       
       {/* Hero Section */}
-      <section className="relative py-section">
-        <div className="container">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <section className="flex-1 flex items-center justify-center py-20 px-4 mt-16">
+        <div className="container max-w-6xl">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
-              <h1 className="font-display font-bold text-4xl lg:text-5xl leading-tight">
-                AI-Powered Financial Forecasting for Data-Driven Growth
+              <h1 className="font-display font-bold text-5xl md:text-6xl leading-tight">
+                AI-Powered Financial Forecasting
               </h1>
-              <p className="text-lg text-muted-foreground max-w-xl">
-                Unify your financial data, explore scenarios with AI, and make confident strategic decisions. 
-                Built for growth strategists, operations optimizers, and financial planners.
+              <p className="text-xl text-muted-foreground">
+                Transform your business data into actionable insights with Olivia. 
+                Make smarter decisions with real-time performance tracking and AI-driven predictions.
               </p>
-              <div className="flex flex-wrap gap-4">
-                <Link to="/login">
-                  <Button size="lg" className="font-semibold">
-                    Start Free Trial
-                  </Button>
-                </Link>
-                <Button size="lg" variant="outline" className="font-semibold">
-                  Watch Demo
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button size="lg" onClick={() => setLoginOpen(true)}>
+                  Start Free Trial
                 </Button>
+                <Button size="lg" variant="outline">Watch Demo</Button>
               </div>
             </div>
-            <div className="relative flex items-center justify-center">
-              <div className="w-full h-96 rounded-lg shadow-lg bg-primary/10 flex items-center justify-center">
-                <LineChart className="w-32 h-32 text-primary" />
+            <div className="relative">
+              <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                <TrendingUp className="h-32 w-32 text-primary" />
               </div>
             </div>
           </div>
@@ -41,13 +83,13 @@ const Landing = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-section bg-muted/30">
-        <div className="container">
+      <section className="py-20 bg-muted/30">
+        <div className="container max-w-6xl">
           <div className="text-center mb-16">
-            <h2 className="font-display font-bold text-3xl mb-4">
+            <h2 className="font-display font-bold text-3xl md:text-4xl mb-4">
               Everything You Need to Forecast with Confidence
             </h2>
-            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Connect your data sources, visualize performance, and model scenarios—all in one platform.
             </p>
           </div>
@@ -93,26 +135,24 @@ const Landing = () => {
       </section>
 
       {/* CTA Section */}
-      <section className="py-section">
-        <div className="container">
+      <section className="py-20">
+        <div className="container max-w-4xl">
           <div className="bg-primary text-primary-foreground rounded-2xl p-12 text-center">
             <h2 className="font-display font-bold text-3xl mb-4">
               Ready to Make Smarter Decisions?
             </h2>
-            <p className="text-lg mb-8 opacity-90 max-w-2xl mx-auto">
-              Join growth strategists, operations teams, and financial planners using Olivia to drive data-backed growth.
+            <p className="text-lg mb-8 opacity-90">
+              Join growth strategists and financial planners using Olivia to drive data-backed growth.
             </p>
-            <Link to="/login">
-              <Button size="lg" variant="secondary" className="font-semibold">
-                Get Started Today
-              </Button>
-            </Link>
+            <Button size="lg" variant="secondary" onClick={() => setLoginOpen(true)}>
+              Get Started Today
+            </Button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-12">
+      <footer className="border-t py-8">
         <div className="container text-center text-muted-foreground">
           <p>© 2025 Olivia. All rights reserved.</p>
         </div>

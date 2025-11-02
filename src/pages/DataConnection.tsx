@@ -1,4 +1,4 @@
-import { Navigation } from "@/components/Navigation";
+import { AuthLayout } from "@/components/AuthLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Circle, Database } from "lucide-react";
@@ -6,10 +6,8 @@ import { mockDataSources } from "@/lib/mock-data";
 
 const DataConnection = () => {
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
-      
-      <main className="container py-8 max-w-5xl">
+    <AuthLayout>
+      <div className="container py-8 max-w-5xl">
         <div className="mb-section">
           <div className="flex justify-center mb-6">
             <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -85,8 +83,8 @@ const DataConnection = () => {
             </Button>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AuthLayout>
   );
 };
 

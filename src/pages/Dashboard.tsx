@@ -1,8 +1,8 @@
-import { Navigation } from "@/components/Navigation";
+import { AuthLayout } from "@/components/AuthLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { TrendingUp, Database, LineChart, FolderKanban, LayoutDashboard } from "lucide-react";
+import { TrendingUp, Database, LineChart, FolderKanban, LayoutDashboard, Settings2, GitBranch, Brain } from "lucide-react";
 
 const Dashboard = () => {
   const workflows = [
@@ -23,49 +23,31 @@ const Dashboard = () => {
     {
       title: "Forecasting",
       description: "Model scenarios and predict outcomes",
-      icon: LineChart,
-      href: "/forecasting-scenario-planning",
+      icon: Brain,
+      href: "/forecasts",
       color: "text-purple-600"
     },
     {
       title: "Saved Scenarios",
       description: "Manage your saved forecasts",
-      icon: FolderKanban,
-      href: "/saving-managing-scenarios",
+      icon: GitBranch,
+      href: "/scenarios",
       color: "text-orange-600"
+    },
+    {
+      title: "Settings",
+      description: "Manage account and preferences",
+      icon: Settings2,
+      href: "/settings",
+      color: "text-gray-600"
     }
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
-      
-      <main className="container py-8">
-        {/* Hero Banner */}
-        <div className="mb-section">
-          <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 rounded-lg bg-primary/10 flex items-center justify-center">
-              <LayoutDashboard className="w-10 h-10 text-primary" />
-            </div>
-          </div>
-          <div className="text-center">
-            <h1 className="font-display font-bold text-3xl mb-2">
-              Welcome to Your Dashboard
-            </h1>
-            <p className="text-muted-foreground text-lg">
-              Monitor performance, forecast outcomes, and make data-driven decisions.
-            </p>
-            <Button 
-              onClick={() => console.log("Connected!")} 
-              className="mt-4"
-            >
-              Test GitHub
-            </Button>
-          </div>
-        </div>
-
+    <AuthLayout>
+      <div className="container py-8">
         {/* Quick Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-section">
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="pb-3">
               <CardDescription>Connected Sources</CardDescription>
@@ -138,8 +120,8 @@ const Dashboard = () => {
             })}
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AuthLayout>
   );
 };
 
