@@ -57,6 +57,7 @@ const PlaygroundEditor = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newFileName, setNewFileName] = useState("");
+  const [gridHeight, setGridHeight] = useState<number>(480);
   const hotRef = useRef<any>(null);
 
   useEffect(() => {
@@ -64,6 +65,18 @@ const PlaygroundEditor = () => {
       fetchFileData();
     }
   }, [fileId]);
+
+  useEffect(() => {
+    const computeHeight = () => {
+      // Approx header/toolbars/tabs space
+      const reserved = showFormulaBar ? 260 : 220;
+      const h = Math.max(window.innerHeight - reserved, 300);
+      setGridHeight(h);
+    };
+    computeHeight();
+    window.addEventListener("resize", computeHeight);
+    return () => window.removeEventListener("resize", computeHeight);
+  }, [showFormulaBar]);
 
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
@@ -527,7 +540,7 @@ const PlaygroundEditor = () => {
               colHeaders={true}
               rowHeaders={true}
               width="100%"
-              height="100%"
+              height={gridHeight}
               licenseKey="non-commercial-and-evaluation"
               stretchH="all"
               manualColumnResize={true}
