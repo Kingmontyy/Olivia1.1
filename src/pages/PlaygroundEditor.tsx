@@ -66,7 +66,19 @@ const PlaygroundEditor = () => {
 
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
-      setTableData(sheets[activeSheetIndex].data || []);
+      const sheetData = sheets[activeSheetIndex].data || [];
+      console.log("Loading sheet data:", sheetData.length, "rows");
+      // Convert cell objects to display values for Handsontable
+      const displayData = sheetData.map(row => 
+        row.map(cell => {
+          if (cell && typeof cell === 'object' && 'v' in cell) {
+            return cell.w || cell.v || ""; // Use formatted text, then value
+          }
+          return cell || "";
+        })
+      );
+      console.log("Converted to display data:", displayData.length, "rows");
+      setTableData(displayData);
     }
   }, [activeSheetIndex, sheets]);
 
@@ -89,18 +101,25 @@ const PlaygroundEditor = () => {
       if (error) throw error;
 
       console.log("Loaded file data:", data);
+      console.log("File edited_data:", data.edited_data);
       setFileData(data);
       
       // Convert stored data to sheet format
       if (data.edited_data) {
         const editedData = data.edited_data as any;
         console.log("Edited data structure:", editedData);
+        console.log("Has sheets array:", editedData.sheets ? "YES" : "NO");
         
         if (editedData.sheets && Array.isArray(editedData.sheets)) {
           // Multi-sheet format
           console.log("Loading multi-sheet format, sheets:", editedData.sheets.length);
+          editedData.sheets.forEach((sheet: any, i: number) => {
+            console.log(`Sheet ${i} (${sheet.name}): ${sheet.data?.length || 0} rows, ${sheet.data?.[0]?.length || 0} cols`);
+            if (sheet.data && sheet.data[0] && sheet.data[0][0]) {
+              console.log(`Sheet ${i} first cell:`, sheet.data[0][0]);
+            }
+          });
           setSheets(editedData.sheets);
-          setTableData(editedData.sheets[0]?.data || createEmptyGrid(50, 26));
         } else if (Array.isArray(editedData)) {
           // Legacy single-sheet format (array of objects)
           console.log("Converting legacy format");
@@ -119,6 +138,7 @@ const PlaygroundEditor = () => {
         } else {
           // Empty or invalid data
           console.warn("Empty or invalid data, creating blank sheet");
+          toast.info("No data found in file. Please re-upload or start with a blank sheet.");
           const emptyGrid = createEmptyGrid(50, 26);
           const sheet: SheetData = {
             name: "Sheet1",
@@ -127,11 +147,11 @@ const PlaygroundEditor = () => {
             config: { columnCount: 26, rowCount: 50 }
           };
           setSheets([sheet]);
-          setTableData(emptyGrid);
         }
       } else {
         // No data, create blank sheet
         console.log("No data found, creating blank sheet");
+        toast.info("Starting with blank sheet. Upload a file in Playground to load data.");
         const emptyGrid = createEmptyGrid(50, 26);
         const sheet: SheetData = {
           name: "Sheet1",
@@ -140,7 +160,6 @@ const PlaygroundEditor = () => {
           config: { columnCount: 26, rowCount: 50 }
         };
         setSheets([sheet]);
-        setTableData(emptyGrid);
       }
     } catch (error) {
       console.error("Error fetching file:", error);
@@ -354,6 +373,19 @@ const PlaygroundEditor = () => {
     if (selected && selected.length > 0) {
       const [row, col] = selected[0];
       setSelectedCell({ row, col });
+      
+      // Check if original cell has a formula
+      const sheet = sheets[activeSheetIndex];
+      if (sheet && sheet.data[row] && sheet.data[row][col]) {
+        const cellObj = sheet.data[row][col];
+        if (cellObj && typeof cellObj === 'object' && 'f' in cellObj && cellObj.f) {
+          // Show formula in formula bar if it exists
+          setFormulaBarValue("=" + cellObj.f);
+          return;
+        }
+      }
+      
+      // Otherwise show the current value
       const cellValue = hotInstance.getDataAtCell(row, col);
       setFormulaBarValue(cellValue || "");
     }
