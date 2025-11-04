@@ -12,6 +12,7 @@ import { Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { MenuBar } from "@/components/editor/MenuBar";
 import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
+import { evaluateDisplayAoA } from "@/lib/xlsx-eval";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,24 +67,13 @@ const PlaygroundEditor = () => {
 
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
-      const sheetData = sheets[activeSheetIndex].data || [];
-      console.log("Loading sheet data:", sheetData.length, "rows");
-      // Convert cell objects to display values for Handsontable
-      const displayData = sheetData.map(row => 
-        row.map(cell => {
-          if (!cell) return "";
-          if (typeof cell === 'object') {
-            // Handle empty cells (type "z" or no value property)
-            if (cell.t === 'z' || !('v' in cell)) {
-              return "";
-            }
-            // Use formatted text, then value
-            return cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : "");
-          }
-          return cell;
-        })
-      );
-      console.log("Converted to display data:", displayData.length, "rows");
+      console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
+      // Evaluate formulas and convert to display values using xlsx-calc
+      const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
+      console.log("Evaluated + converted to display data:", displayData.length, "rows");
+      if (displayData.length === 0) {
+        console.warn("Sheet data empty after evaluation. Showing fallback message.");
+      }
       setTableData(displayData);
     }
   }, [activeSheetIndex, sheets]);
