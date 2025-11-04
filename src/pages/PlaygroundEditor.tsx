@@ -71,10 +71,16 @@ const PlaygroundEditor = () => {
       // Convert cell objects to display values for Handsontable
       const displayData = sheetData.map(row => 
         row.map(cell => {
-          if (cell && typeof cell === 'object' && 'v' in cell) {
-            return cell.w || cell.v || ""; // Use formatted text, then value
+          if (!cell) return "";
+          if (typeof cell === 'object') {
+            // Handle empty cells (type "z" or no value property)
+            if (cell.t === 'z' || !('v' in cell)) {
+              return "";
+            }
+            // Use formatted text, then value
+            return cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : "");
           }
-          return cell || "";
+          return cell;
         })
       );
       console.log("Converted to display data:", displayData.length, "rows");
