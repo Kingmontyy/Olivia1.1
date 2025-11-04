@@ -60,11 +60,54 @@ const Playground = () => {
       reader.onload = (e) => {
         try {
           const data = e.target?.result;
-          const workbook = XLSX.read(data, { type: "binary" });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          resolve(jsonData);
+          const workbook = XLSX.read(data, { 
+            type: "binary",
+            cellFormula: true,
+            cellStyles: true,
+            cellDates: true
+          });
+          
+          // Parse all sheets with full data including formulas and styles
+          const sheets = workbook.SheetNames.map((sheetName, index) => {
+            const worksheet = workbook.Sheets[sheetName];
+            
+            // Get sheet data with formulas preserved
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            const rows: any[][] = [];
+            
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+              const row: any[] = [];
+              for (let C = range.s.c; C <= range.e.c; ++C) {
+                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+                const cell = worksheet[cellAddress];
+                
+                if (cell) {
+                  row.push({
+                    v: cell.v, // value
+                    f: cell.f, // formula
+                    t: cell.t, // type
+                    s: cell.s, // style
+                    w: cell.w  // formatted text
+                  });
+                } else {
+                  row.push(null);
+                }
+              }
+              rows.push(row);
+            }
+            
+            return {
+              name: sheetName,
+              index: index,
+              data: rows,
+              config: {
+                columnCount: range.e.c + 1,
+                rowCount: range.e.r + 1
+              }
+            };
+          });
+          
+          resolve({ sheets });
         } catch (error) {
           reject(error);
         }
@@ -85,7 +128,7 @@ const Playground = () => {
         return;
       }
 
-      // Parse file to JSON
+      // Parse file to JSON with full structure
       const parsedData = await parseFileToJSON(file);
       
       // Insert into Supabase
@@ -105,7 +148,7 @@ const Playground = () => {
       fetchFiles(); // Refresh the list
     } catch (error) {
       console.error("Error uploading file:", error);
-      toast.error("Failed to upload file");
+      toast.error("Failed to upload file. Please ensure it's a valid spreadsheet.");
     }
 
     // Reset input
