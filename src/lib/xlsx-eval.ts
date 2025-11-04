@@ -1,7 +1,6 @@
 import * as XLSX from "xlsx";
-// xlsx-calc has no types in CE; use require style import for compatibility
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const XLSX_CALC: any = (require as any)("xlsx-calc");
+// @ts-ignore - xlsx-calc has no types
+import XLSX_CALC from "xlsx-calc";
 
 // Build a SheetJS-compatible workbook from our stored JSON structure
 function buildWorkbook(sheets: any[]) {
