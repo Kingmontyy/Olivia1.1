@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/AuthLayout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { HotTable } from "@handsontable/react";
 import { registerAllModules } from "handsontable/registry";
 import "handsontable/dist/handsontable.full.min.css";
-import { ArrowLeft, Save, Plus, FileDown } from "lucide-react";
+import { ArrowLeft, Save, Plus, FileDown, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Palette } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // Register Handsontable modules
@@ -37,6 +38,8 @@ const PlaygroundEditor = () => {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [tableData, setTableData] = useState<any[][]>([]);
+  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
+  const [formulaBarValue, setFormulaBarValue] = useState("");
   const hotRef = useRef<any>(null);
 
   useEffect(() => {
@@ -69,17 +72,22 @@ const PlaygroundEditor = () => {
 
       if (error) throw error;
 
+      console.log("Loaded file data:", data);
       setFileData(data);
       
       // Convert stored data to sheet format
       if (data.edited_data) {
         const editedData = data.edited_data as any;
+        console.log("Edited data structure:", editedData);
+        
         if (editedData.sheets && Array.isArray(editedData.sheets)) {
           // Multi-sheet format
+          console.log("Loading multi-sheet format, sheets:", editedData.sheets.length);
           setSheets(editedData.sheets);
           setTableData(editedData.sheets[0]?.data || createEmptyGrid(50, 26));
         } else if (Array.isArray(editedData)) {
           // Legacy single-sheet format (array of objects)
+          console.log("Converting legacy format");
           const grid = convertLegacyToGrid(editedData);
           const sheet: SheetData = {
             name: "Sheet1",
@@ -94,6 +102,7 @@ const PlaygroundEditor = () => {
           setTableData(grid);
         } else {
           // Empty or invalid data
+          console.warn("Empty or invalid data, creating blank sheet");
           const emptyGrid = createEmptyGrid(50, 26);
           const sheet: SheetData = {
             name: "Sheet1",
@@ -106,6 +115,7 @@ const PlaygroundEditor = () => {
         }
       } else {
         // No data, create blank sheet
+        console.log("No data found, creating blank sheet");
         const emptyGrid = createEmptyGrid(50, 26);
         const sheet: SheetData = {
           name: "Sheet1",
@@ -226,6 +236,92 @@ const PlaygroundEditor = () => {
     navigate("/playground");
   };
 
+  const handleCellSelection = () => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) return;
+
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [row, col] = selected[0];
+      setSelectedCell({ row, col });
+      const cellValue = hotInstance.getDataAtCell(row, col);
+      setFormulaBarValue(cellValue || "");
+    }
+  };
+
+  const handleFormulaBarChange = (value: string) => {
+    setFormulaBarValue(value);
+    if (selectedCell) {
+      const hotInstance = hotRef.current?.hotInstance;
+      if (hotInstance) {
+        hotInstance.setDataAtCell(selectedCell.row, selectedCell.col, value);
+      }
+    }
+  };
+
+  const applyBold = () => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance || !selectedCell) return;
+    
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [startRow, startCol, endRow, endCol] = selected[0];
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          const cellMeta = hotInstance.getCellMeta(row, col);
+          hotInstance.setCellMeta(row, col, 'className', 
+            cellMeta.className?.includes('font-bold') 
+              ? cellMeta.className.replace('font-bold', '').trim() 
+              : `${cellMeta.className || ''} font-bold`.trim()
+          );
+        }
+      }
+      hotInstance.render();
+    }
+  };
+
+  const applyItalic = () => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance || !selectedCell) return;
+    
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [startRow, startCol, endRow, endCol] = selected[0];
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          const cellMeta = hotInstance.getCellMeta(row, col);
+          hotInstance.setCellMeta(row, col, 'className', 
+            cellMeta.className?.includes('italic') 
+              ? cellMeta.className.replace('italic', '').trim() 
+              : `${cellMeta.className || ''} italic`.trim()
+          );
+        }
+      }
+      hotInstance.render();
+    }
+  };
+
+  const applyAlignment = (alignment: 'left' | 'center' | 'right') => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance || !selectedCell) return;
+    
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [startRow, startCol, endRow, endCol] = selected[0];
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          let className = hotInstance.getCellMeta(row, col).className || '';
+          className = className.replace(/text-(left|center|right)/g, '').trim();
+          hotInstance.setCellMeta(row, col, 'className', `${className} text-${alignment}`.trim());
+        }
+      }
+      hotInstance.render();
+    }
+  };
+
   if (loading) {
     return (
       <AuthLayout>
@@ -274,6 +370,76 @@ const PlaygroundEditor = () => {
           </div>
         </div>
 
+        {/* Toolbar */}
+        <div className="mb-2 flex flex-wrap items-center gap-2 p-2 bg-muted/30 border rounded-lg">
+          <div className="flex items-center gap-1 border-r pr-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={applyBold}
+              title="Bold"
+            >
+              <Bold className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={applyItalic}
+              title="Italic"
+            >
+              <Italic className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-1 border-r pr-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => applyAlignment('left')}
+              title="Align Left"
+            >
+              <AlignLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => applyAlignment('center')}
+              title="Align Center"
+            >
+              <AlignCenter className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => applyAlignment('right')}
+              title="Align Right"
+            >
+              <AlignRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Text Color"
+            >
+              <Palette className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Formula Bar */}
+        <div className="mb-2 flex items-center gap-2 p-2 bg-muted/30 border rounded-lg">
+          <span className="text-sm font-medium min-w-[60px]">
+            {selectedCell ? `${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1}` : ''}
+          </span>
+          <Input
+            value={formulaBarValue}
+            onChange={(e) => handleFormulaBarChange(e.target.value)}
+            placeholder="Enter formula or value"
+            className="flex-1"
+          />
+        </div>
+
         {/* Spreadsheet Container */}
         <div className="flex-1 flex flex-col bg-background border rounded-lg overflow-hidden">
           {/* Main Grid */}
@@ -292,6 +458,7 @@ const PlaygroundEditor = () => {
               contextMenu={true}
               filters={true}
               dropdownMenu={true}
+              afterSelection={handleCellSelection}
             />
           </div>
 
