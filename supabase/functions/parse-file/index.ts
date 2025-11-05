@@ -15,12 +15,32 @@ serve(async (req) => {
   try {
     console.log('Parse file function called');
 
+    // Get the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Create Supabase client with service role for storage access
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Create client with user's auth for verification
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+          headers: { Authorization: authHeader },
         },
       }
     );
@@ -56,8 +76,8 @@ serve(async (req) => {
 
     console.log(`Parsing file: ${filePath} for user: ${user.id}`);
 
-    // Download file from storage
-    const { data: fileData, error: downloadError } = await supabaseClient
+    // Download file from storage using service role for reliable access
+    const { data: fileData, error: downloadError } = await supabaseAdmin
       .storage
       .from('uploaded-files')
       .download(filePath);
@@ -128,11 +148,12 @@ serve(async (req) => {
     const parsedData = { sheets };
     console.log(`Parsed ${sheets.length} sheets successfully`);
 
-    // Update the database record with parsed data
-    const { error: updateError } = await supabaseClient
+    // Update the database record with parsed data using service role
+    const { error: updateError } = await supabaseAdmin
       .from('uploaded_files')
       .update({ edited_data: parsedData })
-      .eq('id', fileId);
+      .eq('id', fileId)
+      .eq('user_id', user.id); // Security: only update user's own files
 
     if (updateError) {
       console.error('Error updating file record:', updateError);
