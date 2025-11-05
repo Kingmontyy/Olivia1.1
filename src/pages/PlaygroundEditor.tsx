@@ -83,10 +83,13 @@ const PlaygroundEditor = () => {
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
       console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
-      // Keep the original cell objects for display, don't convert to simple values
-      const sheetData = sheets[activeSheetIndex].data;
-      console.log("Setting table data with original cell objects:", sheetData.length, "rows");
-      setTableData(sheetData);
+      // Evaluate formulas and convert to display values using xlsx-calc
+      const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
+      console.log("Evaluated + converted to display data:", displayData.length, "rows");
+      if (displayData.length === 0) {
+        console.warn("Sheet data empty after evaluation. Showing fallback message.");
+      }
+      setTableData(displayData);
     }
   }, [activeSheetIndex, sheets]);
 
@@ -614,25 +617,6 @@ const PlaygroundEditor = () => {
               dropdownMenu={true}
               afterSelection={handleCellSelection}
               undo={true}
-              cells={(row, col) => {
-                // Custom cell renderer to handle cell objects
-                const cellData = tableData[row]?.[col];
-                if (cellData && typeof cellData === 'object') {
-                  return {
-                    renderer: (instance: any, td: HTMLTableCellElement, row: number, col: number, prop: any, value: any) => {
-                      const cell = tableData[row]?.[col];
-                      if (cell && typeof cell === 'object') {
-                        const displayValue = cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : "");
-                        td.innerHTML = String(displayValue);
-                      } else {
-                        td.innerHTML = value || "";
-                      }
-                      return td;
-                    }
-                  };
-                }
-                return {};
-              }}
             />
           </div>
 
