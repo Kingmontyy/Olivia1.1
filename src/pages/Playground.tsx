@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { AuthLayout } from "@/components/AuthLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx";
 
 interface UploadedFile {
   id: string;
@@ -14,11 +14,14 @@ interface UploadedFile {
   file_type: string;
   created_at: string;
   edited_data: any;
+  file_url: string;
 }
 
 const Playground = () => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -51,120 +54,184 @@ const Playground = () => {
   };
 
   const handleUploadClick = () => {
-    fileInputRef.current?.click();
+    if (!uploading) {
+      fileInputRef.current?.click();
+    }
   };
 
-  const parseFileToJSON = async (file: File): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = e.target?.result;
-          const workbook = XLSX.read(data, { 
-            type: "binary",
-            cellFormula: true,
-            cellStyles: true,
-            cellDates: true
-          });
-          
-          // Parse all sheets with full data including formulas and styles
-          const sheets = workbook.SheetNames.map((sheetName, index) => {
-            const worksheet = workbook.Sheets[sheetName];
-            
-            // Get sheet data with formulas preserved
-            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-            const rows: any[][] = [];
-            
-            for (let R = range.s.r; R <= range.e.r; ++R) {
-              const row: any[] = [];
-              for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-                const cell = worksheet[cellAddress];
-                
-                if (cell) {
-                  row.push({
-                    v: cell.v, // value
-                    f: cell.f, // formula
-                    t: cell.t, // type
-                    s: cell.s, // style
-                    w: cell.w  // formatted text
-                  });
-                } else {
-                  row.push(null);
-                }
-              }
-              rows.push(row);
-            }
-            
-            return {
-              name: sheetName,
-              index: index,
-              data: rows,
-              config: {
-                columnCount: range.e.c + 1,
-                rowCount: range.e.r + 1
-              }
-            };
-          });
-          
-          resolve({ sheets });
-        } catch (error) {
-          reject(error);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsBinaryString(file);
-    });
+  const validateFile = (file: File): string | null => {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+
+    if (file.size > maxSize) {
+      return "File too large—max 5MB. Split file or use smaller version.";
+    }
+
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      return "Invalid format—only .xlsx, .xls, and .csv files are supported.";
+    }
+
+    return null;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Please log in to upload files");
-        return;
-      }
+    console.log('Upload started:', file.name, file.size, file.type);
 
-      // Parse file to JSON with full structure
-      const parsedData = await parseFileToJSON(file);
-      
-      // Insert into Supabase
-      const { error } = await supabase
-        .from("uploaded_files")
-        .insert({
-          user_id: user.id,
-          file_name: file.name,
-          file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
-          file_url: '', // We're storing parsed data, not the file itself
-          edited_data: parsedData
-        });
-
-      if (error) throw error;
-
-      toast.success(`Uploaded: ${file.name}`);
-      fetchFiles(); // Refresh the list
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      toast.error("Failed to upload file. Please ensure it's a valid spreadsheet.");
+    // Validate file
+    const validationError = validateFile(file);
+    if (validationError) {
+      toast.error(validationError);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
 
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    setUploading(true);
+    setUploadProgress(0);
+
+    let retryCount = 0;
+    const maxRetries = 1;
+
+    const attemptUpload = async (): Promise<void> => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error("Please log in to upload files");
+        }
+
+        console.log('User authenticated:', user.id);
+
+        // Step 1: Upload file to storage (30%)
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+        
+        setUploadProgress(10);
+        console.log('Uploading to storage:', fileName);
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('uploaded-files')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError);
+          throw new Error(`Upload failed: ${uploadError.message}`);
+        }
+
+        console.log('File uploaded to storage:', uploadData.path);
+        setUploadProgress(40);
+
+        // Step 2: Create database record (60%)
+        const { data: fileRecord, error: dbError } = await supabase
+          .from("uploaded_files")
+          .insert({
+            user_id: user.id,
+            file_name: file.name,
+            file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+            file_url: uploadData.path,
+            edited_data: null // Will be populated by edge function
+          })
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error('Database insert error:', dbError);
+          // Clean up uploaded file
+          await supabase.storage.from('uploaded-files').remove([fileName]);
+          throw new Error(`Database error: ${dbError.message}`);
+        }
+
+        console.log('Database record created:', fileRecord.id);
+        setUploadProgress(70);
+
+        // Step 3: Trigger async parsing (90%)
+        console.log('Triggering parse function...');
+        
+        const { error: parseError } = await supabase.functions.invoke('parse-file', {
+          body: {
+            fileId: fileRecord.id,
+            filePath: uploadData.path
+          }
+        });
+
+        if (parseError) {
+          console.error('Parse function error:', parseError);
+          // Don't fail the upload, just warn the user
+          toast.warning(`File uploaded but parsing delayed. Refresh to check status.`);
+        } else {
+          console.log('Parse function triggered successfully');
+        }
+
+        setUploadProgress(100);
+        toast.success(`Uploaded: ${file.name}`);
+        
+        // Refresh the list after a brief delay to allow parsing
+        setTimeout(() => fetchFiles(), 1000);
+
+      } catch (error: any) {
+        console.error("Upload attempt failed:", error);
+        
+        // Retry logic for transient errors
+        if (retryCount < maxRetries && error.message?.includes('network')) {
+          retryCount++;
+          console.log(`Retrying upload (attempt ${retryCount + 1})...`);
+          toast.info(`Retrying upload...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return attemptUpload();
+        }
+
+        // Show user-friendly error
+        const errorMessage = error.message || "Upload failed. Please try again.";
+        toast.error(errorMessage);
+        throw error;
+      }
+    };
+
+    try {
+      await attemptUpload();
+    } catch (error) {
+      console.error("Upload failed after retries:", error);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
-  const handleDelete = async (fileId: string, fileName: string) => {
+  const handleDelete = async (fileId: string, fileName: string, fileUrl: string) => {
     try {
-      const { error } = await supabase
+      console.log('Deleting file:', fileId, fileUrl);
+
+      // Delete from database
+      const { error: dbError } = await supabase
         .from("uploaded_files")
         .delete()
         .eq("id", fileId);
 
-      if (error) throw error;
+      if (dbError) throw dbError;
+
+      // Delete from storage if file_url exists
+      if (fileUrl) {
+        const { error: storageError } = await supabase.storage
+          .from('uploaded-files')
+          .remove([fileUrl]);
+
+        if (storageError) {
+          console.error('Storage delete error:', storageError);
+          // Don't fail the operation, file record is already deleted
+        }
+      }
 
       toast.success(`Deleted: ${fileName}`);
       fetchFiles(); // Refresh the list
@@ -186,19 +253,35 @@ const Playground = () => {
           </div>
           <Button 
             onClick={handleUploadClick}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            disabled={uploading}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
           >
             <Upload className="mr-2 h-4 w-4" />
-            Upload
+            {uploading ? "Uploading..." : "Upload"}
           </Button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.csv"
+            accept=".xlsx,.xls,.csv"
             onChange={handleFileUpload}
             className="hidden"
+            disabled={uploading}
           />
         </div>
+
+        {uploading && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Uploading file...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <Progress value={uploadProgress} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 mb-6">
           <Card>
@@ -248,7 +331,7 @@ const Playground = () => {
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          onClick={() => handleDelete(file.id, file.file_name)}
+                          onClick={() => handleDelete(file.id, file.file_name, file.file_url)}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
