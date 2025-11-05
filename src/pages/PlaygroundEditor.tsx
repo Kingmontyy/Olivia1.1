@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/AuthLayout";
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,11 @@ const PlaygroundEditor = () => {
       setTableData(displayData);
     }
   }, [activeSheetIndex, sheets]);
+
+  useEffect(() => {
+    // reset selection guard when switching sheets
+    lastSelectedRef.current = "";
+  }, [activeSheetIndex]);
 
   const fetchFileData = async () => {
     try {
@@ -426,43 +431,42 @@ const PlaygroundEditor = () => {
     toast.success("Sheet deleted");
   };
 
-  const handleCellSelection = () => {
+  const lastSelectedRef = useRef<string>("");
+
+  const handleCellSelection = useCallback((row: number, col: number) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) return;
 
     try {
-      const selected = hotInstance.getSelected();
-      if (selected && selected.length > 0) {
-        const [row, col] = selected[0];
-        setSelectedCell({ row, col });
-        
-        // Get the cell data from current sheet
-        const sheet = sheets[activeSheetIndex];
-        if (sheet && sheet.data && sheet.data[row] && sheet.data[row][col]) {
-          const cellObj = sheet.data[row][col];
-          
-          // If cell has a formula, show it in formula bar
-          if (cellObj && typeof cellObj === 'object' && cellObj.f) {
-            setFormulaBarValue("=" + cellObj.f);
-            return;
-          }
-          
-          // Otherwise show the display value
-          if (cellObj && typeof cellObj === 'object') {
-            const displayValue = cellObj.w !== undefined ? cellObj.w : (cellObj.v !== undefined ? cellObj.v : "");
-            setFormulaBarValue(String(displayValue));
-            return;
-          }
-        }
-        
-        // Fallback to current cell value from Handsontable
-        const cellValue = hotInstance.getDataAtCell(row, col);
-        setFormulaBarValue(cellValue ? String(cellValue) : "");
+      const key = `${row}:${col}`;
+      if (lastSelectedRef.current === key) {
+        return; // prevent repeated updates for same selection
       }
+      lastSelectedRef.current = key;
+
+      setSelectedCell({ row, col });
+
+      // Read from original sheet to preserve formulas
+      const sheet = sheets[activeSheetIndex];
+      const cellObj = sheet?.data?.[row]?.[col];
+
+      if (cellObj && typeof cellObj === "object" && cellObj.f) {
+        setFormulaBarValue("=" + cellObj.f);
+        return;
+      }
+
+      if (cellObj && typeof cellObj === "object") {
+        const displayValue = cellObj.w !== undefined ? cellObj.w : (cellObj.v !== undefined ? cellObj.v : "");
+        setFormulaBarValue(String(displayValue));
+        return;
+      }
+
+      const cellValue = hotInstance.getDataAtCell(row, col);
+      setFormulaBarValue(cellValue ? String(cellValue) : "");
     } catch (error) {
       console.error("Error in handleCellSelection:", error);
     }
-  };
+  }, [activeSheetIndex, sheets]);
 
   const handleFormulaBarChange = (value: string) => {
     setFormulaBarValue(value);
@@ -615,7 +619,7 @@ const PlaygroundEditor = () => {
               contextMenu={true}
               filters={true}
               dropdownMenu={true}
-              afterSelection={handleCellSelection}
+              afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
               undo={true}
             />
           </div>
