@@ -31,6 +31,8 @@ interface FileData {
   id: string;
   file_name: string;
   edited_data: any;
+  file_url?: string;
+  file_type?: string;
 }
 
 interface SheetData {
@@ -145,30 +147,42 @@ const PlaygroundEditor = () => {
           setSheets([sheet]);
           setTableData(grid);
         } else {
-          // Empty or invalid data
-          console.warn("Empty or invalid data, creating blank sheet");
-          toast.info("No data found in file. Please re-upload or start with a blank sheet.");
-          const emptyGrid = createEmptyGrid(50, 26);
-          const sheet: SheetData = {
-            name: "Sheet1",
-            index: 0,
-            data: emptyGrid,
-            config: { columnCount: 26, rowCount: 50 }
-          };
-          setSheets([sheet]);
+          // Empty or invalid data — try fallback parse from storage
+          console.warn("Empty or invalid data, attempting storage parse fallback");
+          if (data.file_url) {
+            const parsedSheets = await parseFromStorage(data.file_url);
+            if (parsedSheets && parsedSheets.length > 0) {
+              setSheets(parsedSheets);
+            } else {
+              toast.info("No data found in file. Please re-upload or start with a blank sheet.");
+              const emptyGrid = createEmptyGrid(50, 26);
+              const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
+              setSheets([sheet]);
+            }
+          } else {
+            toast.info("No data found in file. Please re-upload or start with a blank sheet.");
+            const emptyGrid = createEmptyGrid(50, 26);
+            const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
+            setSheets([sheet]);
+          }
         }
       } else {
-        // No data, create blank sheet
-        console.log("No data found, creating blank sheet");
-        toast.info("Starting with blank sheet. Upload a file in Playground to load data.");
-        const emptyGrid = createEmptyGrid(50, 26);
-        const sheet: SheetData = {
-          name: "Sheet1",
-          index: 0,
-          data: emptyGrid,
-          config: { columnCount: 26, rowCount: 50 }
-        };
-        setSheets([sheet]);
+        // No parsed data yet — try to parse original upload from storage
+        console.log("No parsed data found, attempting storage parse");
+        if (data.file_url) {
+          const parsedSheets = await parseFromStorage(data.file_url);
+          if (parsedSheets && parsedSheets.length > 0) {
+            setSheets(parsedSheets);
+          } else {
+            const emptyGrid = createEmptyGrid(50, 26);
+            const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
+            setSheets([sheet]);
+          }
+        } else {
+          const emptyGrid = createEmptyGrid(50, 26);
+          const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
+          setSheets([sheet]);
+        }
       }
     } catch (error) {
       console.error("Error fetching file:", error);
@@ -196,6 +210,44 @@ const PlaygroundEditor = () => {
     });
 
     return grid;
+  };
+
+  // Fallback: download and parse original file from storage if edited_data is missing
+  const parseFromStorage = async (path: string): Promise<SheetData[] | null> => {
+    try {
+      const { data: blob, error } = await supabase.storage
+        .from('uploaded-files')
+        .download(path);
+      if (error) {
+        console.error('Storage download error:', error);
+        return null;
+      }
+      const arrayBuffer = await blob.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellFormula: true, cellStyles: true, cellDates: true });
+      const sheets: SheetData[] = workbook.SheetNames.map((sheetName: string, index: number) => {
+        const worksheet = workbook.Sheets[sheetName];
+        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+        const rows: any[][] = [];
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          const row: any[] = [];
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+            const cell = worksheet[cellAddress] as any;
+            if (cell) {
+              row.push({ v: cell.v, f: cell.f, t: cell.t, s: cell.s, w: cell.w });
+            } else {
+              row.push(null);
+            }
+          }
+          rows.push(row);
+        }
+        return { name: sheetName, index, data: rows, config: { columnCount: range.e.c + 1, rowCount: range.e.r + 1 } };
+      });
+      return sheets;
+    } catch (err) {
+      console.error('parseFromStorage error:', err);
+      return null;
+    }
   };
 
   const getCurrentSheetData = (): any[][] => {

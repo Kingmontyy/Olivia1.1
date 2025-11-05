@@ -74,6 +74,11 @@ export const MenuBar = ({
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {/* Back to Playground */}
+      <Button variant="ghost" size="sm" className="h-8 px-3 text-sm font-normal" onClick={onClose}>
+        Back to Playground
+      </Button>
+
       {/* Edit Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
