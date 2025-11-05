@@ -83,13 +83,10 @@ const PlaygroundEditor = () => {
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
       console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
-      // Evaluate formulas and convert to display values using xlsx-calc
-      const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
-      console.log("Evaluated + converted to display data:", displayData.length, "rows");
-      if (displayData.length === 0) {
-        console.warn("Sheet data empty after evaluation. Showing fallback message.");
-      }
-      setTableData(displayData);
+      // Keep the original cell objects for display, don't convert to simple values
+      const sheetData = sheets[activeSheetIndex].data;
+      console.log("Setting table data with original cell objects:", sheetData.length, "rows");
+      setTableData(sheetData);
     }
   }, [activeSheetIndex, sheets]);
 
@@ -430,25 +427,37 @@ const PlaygroundEditor = () => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) return;
 
-    const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [row, col] = selected[0];
-      setSelectedCell({ row, col });
-      
-      // Check if original cell has a formula
-      const sheet = sheets[activeSheetIndex];
-      if (sheet && sheet.data[row] && sheet.data[row][col]) {
-        const cellObj = sheet.data[row][col];
-        if (cellObj && typeof cellObj === 'object' && 'f' in cellObj && cellObj.f) {
-          // Show formula in formula bar if it exists
-          setFormulaBarValue("=" + cellObj.f);
-          return;
+    try {
+      const selected = hotInstance.getSelected();
+      if (selected && selected.length > 0) {
+        const [row, col] = selected[0];
+        setSelectedCell({ row, col });
+        
+        // Get the cell data from current sheet
+        const sheet = sheets[activeSheetIndex];
+        if (sheet && sheet.data && sheet.data[row] && sheet.data[row][col]) {
+          const cellObj = sheet.data[row][col];
+          
+          // If cell has a formula, show it in formula bar
+          if (cellObj && typeof cellObj === 'object' && cellObj.f) {
+            setFormulaBarValue("=" + cellObj.f);
+            return;
+          }
+          
+          // Otherwise show the display value
+          if (cellObj && typeof cellObj === 'object') {
+            const displayValue = cellObj.w !== undefined ? cellObj.w : (cellObj.v !== undefined ? cellObj.v : "");
+            setFormulaBarValue(String(displayValue));
+            return;
+          }
         }
+        
+        // Fallback to current cell value from Handsontable
+        const cellValue = hotInstance.getDataAtCell(row, col);
+        setFormulaBarValue(cellValue ? String(cellValue) : "");
       }
-      
-      // Otherwise show the current value
-      const cellValue = hotInstance.getDataAtCell(row, col);
-      setFormulaBarValue(cellValue || "");
+    } catch (error) {
+      console.error("Error in handleCellSelection:", error);
     }
   };
 
@@ -605,6 +614,25 @@ const PlaygroundEditor = () => {
               dropdownMenu={true}
               afterSelection={handleCellSelection}
               undo={true}
+              cells={(row, col) => {
+                // Custom cell renderer to handle cell objects
+                const cellData = tableData[row]?.[col];
+                if (cellData && typeof cellData === 'object') {
+                  return {
+                    renderer: (instance: any, td: HTMLTableCellElement, row: number, col: number, prop: any, value: any) => {
+                      const cell = tableData[row]?.[col];
+                      if (cell && typeof cell === 'object') {
+                        const displayValue = cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : "");
+                        td.innerHTML = String(displayValue);
+                      } else {
+                        td.innerHTML = value || "";
+                      }
+                      return td;
+                    }
+                  };
+                }
+                return {};
+              }}
             />
           </div>
 
