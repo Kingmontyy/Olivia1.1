@@ -38,15 +38,23 @@ export function AppSidebar() {
   const { open, toggleSidebar } = useSidebar();
   const location = useLocation();
 
+  const handleToggle = () => {
+    console.log('Sidebar toggle clicked, current state:', open);
+    toggleSidebar();
+  };
+
   return (
-    <Sidebar className="border-r sticky top-0 h-screen">
+    <Sidebar 
+      className="border-r sticky top-0 h-screen" 
+      collapsible="icon"
+    >
       <SidebarContent className="flex flex-col">
         {/* Toggle button at top-right */}
         <div className="flex justify-end p-2">
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleSidebar}
+            onClick={handleToggle}
             className="h-8 w-8"
           >
             {open ? (
