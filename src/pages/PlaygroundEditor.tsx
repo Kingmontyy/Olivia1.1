@@ -537,54 +537,57 @@ const PlaygroundEditor = () => {
 
   return (
     <AuthLayout>
-      <div className="flex flex-col h-screen w-full">
-        {/* Menu Bar */}
-        <MenuBar
-          onSave={handleSave}
-          onExport={handleExport}
-          onClose={handleClose}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onToggleGridlines={handleToggleGridlines}
-          onToggleFormulaBar={handleToggleFormulaBar}
-        />
+      <div className="flex flex-col h-screen w-full overflow-hidden">
+        {/* Fixed Header Section */}
+        <div className="flex-none">
+          {/* Menu Bar */}
+          <MenuBar
+            onSave={handleSave}
+            onExport={handleExport}
+            onClose={handleClose}
+            onRename={handleRename}
+            onDelete={handleDelete}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onToggleGridlines={handleToggleGridlines}
+            onToggleFormulaBar={handleToggleFormulaBar}
+          />
 
-        {/* Formatting Toolbar */}
-        <FormattingToolbar
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onBold={applyBold}
-          onItalic={applyItalic}
-          onAlignment={applyAlignment}
-        />
+          {/* Formatting Toolbar */}
+          <FormattingToolbar
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onBold={applyBold}
+            onItalic={applyItalic}
+            onAlignment={applyAlignment}
+          />
 
-        {/* File Name Header */}
-        <div className="px-4 py-2 border-b bg-background flex items-center justify-between">
-          <h1 className="font-semibold text-lg">
-            {fileData?.file_name || "Untitled Spreadsheet"}
-          </h1>
+          {/* File Name Header */}
+          <div className="px-4 py-2 border-b bg-background flex items-center justify-between">
+            <h1 className="font-semibold text-lg">
+              {fileData?.file_name || "Untitled Spreadsheet"}
+            </h1>
+          </div>
+
+          {/* Formula Bar */}
+          {showFormulaBar && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
+              <span className="text-sm font-medium min-w-[60px]">
+                {selectedCell ? `${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1}` : ''}
+              </span>
+              <Input
+                value={formulaBarValue}
+                onChange={(e) => handleFormulaBarChange(e.target.value)}
+                placeholder="Enter formula or value"
+                className="flex-1 h-8"
+              />
+            </div>
+          )}
         </div>
 
-        {/* Formula Bar */}
-        {showFormulaBar && (
-          <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/30">
-            <span className="text-sm font-medium min-w-[60px]">
-              {selectedCell ? `${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1}` : ''}
-            </span>
-            <Input
-              value={formulaBarValue}
-              onChange={(e) => handleFormulaBarChange(e.target.value)}
-              placeholder="Enter formula or value"
-              className="flex-1 h-8"
-            />
-          </div>
-        )}
-
-        {/* Spreadsheet Container */}
+        {/* Scrollable Content Section */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Main Grid */}
+          {/* Main Grid - Scrollable */}
           <div className="flex-1 overflow-auto">
             <HotTable
               ref={hotRef}
@@ -605,8 +608,8 @@ const PlaygroundEditor = () => {
             />
           </div>
 
-          {/* Sheet Tabs */}
-          <div className="border-t bg-muted/30 px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
+          {/* Fixed Sheet Tabs - Horizontally Scrollable */}
+          <div className="flex-none border-t bg-muted/30 px-2 py-1.5 flex items-center gap-1 overflow-x-auto">
             {sheets.map((sheet, index) => (
               <div key={index} className="flex items-center group">
                 <button

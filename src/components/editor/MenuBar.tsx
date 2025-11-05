@@ -41,6 +41,11 @@ export const MenuBar = ({
 
   return (
     <div className="flex items-center gap-1 px-2 py-1 border-b bg-background">
+      {/* Playground Button */}
+      <Button variant="ghost" size="sm" className="h-8 px-3 text-sm font-normal" onClick={onClose}>
+        Playground
+      </Button>
+
       {/* File Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -73,11 +78,6 @@ export const MenuBar = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {/* Back to Playground */}
-      <Button variant="ghost" size="sm" className="h-8 px-3 text-sm font-normal" onClick={onClose}>
-        Back to Playground
-      </Button>
 
       {/* Edit Menu */}
       <DropdownMenu>
