@@ -541,6 +541,48 @@ const PlaygroundEditor = () => {
     }
   };
 
+  const applyFillColor = (color: string) => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) return;
+    
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [startRow, startCol, endRow, endCol] = selected[0];
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          hotInstance.setCellMeta(row, col, 'style', {
+            ...hotInstance.getCellMeta(row, col).style,
+            backgroundColor: color
+          });
+        }
+      }
+      hotInstance.render();
+      toast.success("Fill color applied");
+    }
+  };
+
+  const applyTextColor = (color: string) => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) return;
+    
+    const selected = hotInstance.getSelected();
+    if (selected && selected.length > 0) {
+      const [startRow, startCol, endRow, endCol] = selected[0];
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          hotInstance.setCellMeta(row, col, 'style', {
+            ...hotInstance.getCellMeta(row, col).style,
+            color: color
+          });
+        }
+      }
+      hotInstance.render();
+      toast.success("Text color applied");
+    }
+  };
+
   if (loading) {
     return (
       <AuthLayout>
@@ -576,6 +618,8 @@ const PlaygroundEditor = () => {
             onBold={applyBold}
             onItalic={applyItalic}
             onAlignment={applyAlignment}
+            onFillColor={applyFillColor}
+            onTextColor={applyTextColor}
           />
 
           {/* File Name Header */}
@@ -621,6 +665,41 @@ const PlaygroundEditor = () => {
               dropdownMenu={true}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
               undo={true}
+              cells={(row: number, col: number) => {
+                const cellProperties: any = {};
+                const sheet = sheets[activeSheetIndex];
+                const cellObj = sheet?.data?.[row]?.[col];
+                
+                // Apply styles from original XLSX if they exist
+                if (cellObj && typeof cellObj === 'object' && cellObj.s) {
+                  const style: any = {};
+                  const xlsxStyle = cellObj.s;
+                  
+                  // Background color
+                  if (xlsxStyle.fgColor?.rgb) {
+                    style.backgroundColor = `#${xlsxStyle.fgColor.rgb.substring(2)}`;
+                  }
+                  
+                  // Text color
+                  if (xlsxStyle.font?.color?.rgb) {
+                    style.color = `#${xlsxStyle.font.color.rgb.substring(2)}`;
+                  }
+                  
+                  // Bold/italic
+                  if (xlsxStyle.font?.bold) {
+                    cellProperties.className = (cellProperties.className || '') + ' font-bold';
+                  }
+                  if (xlsxStyle.font?.italic) {
+                    cellProperties.className = (cellProperties.className || '') + ' italic';
+                  }
+                  
+                  if (Object.keys(style).length > 0) {
+                    cellProperties.style = style;
+                  }
+                }
+                
+                return cellProperties;
+              }}
             />
           </div>
 
