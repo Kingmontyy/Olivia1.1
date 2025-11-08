@@ -228,25 +228,55 @@ const PlaygroundEditor = () => {
         return null;
       }
       const arrayBuffer = await blob.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellFormula: true, cellStyles: true, cellDates: true });
+      const workbook = XLSX.read(arrayBuffer, { 
+        type: 'array', 
+        cellFormula: true, 
+        cellStyles: true, 
+        cellDates: true,
+        cellNF: true
+      });
+      
       const sheets: SheetData[] = workbook.SheetNames.map((sheetName: string, index: number) => {
         const worksheet = workbook.Sheets[sheetName];
         const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
         const rows: any[][] = [];
+        
         for (let R = range.s.r; R <= range.e.r; ++R) {
           const row: any[] = [];
           for (let C = range.s.c; C <= range.e.c; ++C) {
             const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
             const cell = worksheet[cellAddress] as any;
+            
             if (cell) {
-              row.push({ v: cell.v, f: cell.f, t: cell.t, s: cell.s, w: cell.w });
+              const cellData: any = { 
+                v: cell.v, 
+                f: cell.f, 
+                t: cell.t, 
+                w: cell.w 
+              };
+              
+              // Store style information if available
+              if (cell.s) {
+                cellData.s = cell.s;
+              }
+              
+              row.push(cellData);
             } else {
               row.push(null);
             }
           }
           rows.push(row);
         }
-        return { name: sheetName, index, data: rows, config: { columnCount: range.e.c + 1, rowCount: range.e.r + 1 } };
+        
+        return { 
+          name: sheetName, 
+          index, 
+          data: rows, 
+          config: { 
+            columnCount: range.e.c + 1, 
+            rowCount: range.e.r + 1 
+          } 
+        };
       });
       return sheets;
     } catch (err) {
@@ -543,44 +573,58 @@ const PlaygroundEditor = () => {
 
   const applyFillColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
-    if (!hotInstance) return;
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
     
     const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [startRow, startCol, endRow, endCol] = selected[0];
-      
-      for (let row = startRow; row <= endRow; row++) {
-        for (let col = startCol; col <= endCol; col++) {
-          hotInstance.setCellMeta(row, col, 'style', {
-            ...hotInstance.getCellMeta(row, col).style,
-            backgroundColor: color
-          });
-        }
-      }
-      hotInstance.render();
-      toast.success("Fill color applied");
+    if (!selected || selected.length === 0) {
+      toast.error("Please select cells first");
+      return;
     }
+    
+    const [startRow, startCol, endRow, endCol] = selected[0];
+    
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const currentStyle = hotInstance.getCellMeta(row, col).style || {};
+        hotInstance.setCellMeta(row, col, 'style', {
+          ...currentStyle,
+          backgroundColor: color
+        });
+      }
+    }
+    hotInstance.render();
+    toast.success("Fill color applied");
   };
 
   const applyTextColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
-    if (!hotInstance) return;
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
     
     const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [startRow, startCol, endRow, endCol] = selected[0];
-      
-      for (let row = startRow; row <= endRow; row++) {
-        for (let col = startCol; col <= endCol; col++) {
-          hotInstance.setCellMeta(row, col, 'style', {
-            ...hotInstance.getCellMeta(row, col).style,
-            color: color
-          });
-        }
-      }
-      hotInstance.render();
-      toast.success("Text color applied");
+    if (!selected || selected.length === 0) {
+      toast.error("Please select cells first");
+      return;
     }
+    
+    const [startRow, startCol, endRow, endCol] = selected[0];
+    
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const currentStyle = hotInstance.getCellMeta(row, col).style || {};
+        hotInstance.setCellMeta(row, col, 'style', {
+          ...currentStyle,
+          color: color
+        });
+      }
+    }
+    hotInstance.render();
+    toast.success("Text color applied");
   };
 
   if (loading) {
@@ -675,22 +719,32 @@ const PlaygroundEditor = () => {
                   const style: any = {};
                   const xlsxStyle = cellObj.s;
                   
-                  // Background color
-                  if (xlsxStyle.fgColor?.rgb) {
-                    style.backgroundColor = `#${xlsxStyle.fgColor.rgb.substring(2)}`;
+                  // Background color - XLSX stores it in fill.fgColor
+                  if (xlsxStyle.fill?.fgColor?.rgb) {
+                    const rgb = xlsxStyle.fill.fgColor.rgb;
+                    style.backgroundColor = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
+                  } else if (xlsxStyle.fgColor?.rgb) {
+                    const rgb = xlsxStyle.fgColor.rgb;
+                    style.backgroundColor = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
                   }
                   
                   // Text color
                   if (xlsxStyle.font?.color?.rgb) {
-                    style.color = `#${xlsxStyle.font.color.rgb.substring(2)}`;
+                    const rgb = xlsxStyle.font.color.rgb;
+                    style.color = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
                   }
                   
-                  // Bold/italic
+                  // Bold/italic from font
+                  let className = '';
                   if (xlsxStyle.font?.bold) {
-                    cellProperties.className = (cellProperties.className || '') + ' font-bold';
+                    className += ' font-bold';
                   }
                   if (xlsxStyle.font?.italic) {
-                    cellProperties.className = (cellProperties.className || '') + ' italic';
+                    className += ' italic';
+                  }
+                  
+                  if (className) {
+                    cellProperties.className = className.trim();
                   }
                   
                   if (Object.keys(style).length > 0) {
