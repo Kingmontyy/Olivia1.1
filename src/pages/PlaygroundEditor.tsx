@@ -93,9 +93,13 @@ const PlaygroundEditor = () => {
       const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
       console.log("Evaluated + converted to display data:", displayData.length, "rows");
       setTableData(displayData);
-      // Force Handsontable to re-render all cells to apply imported styles
+      // Apply saved meta back to HOT and render
       setTimeout(() => {
-        hotRef.current?.hotInstance?.render();
+        const hot = hotRef.current?.hotInstance;
+        if (hot) {
+          applySheetMetaToHot(sheets[activeSheetIndex], hot);
+          hot.render();
+        }
       }, 0);
     }
   }, [activeSheetIndex]);
@@ -106,7 +110,11 @@ const PlaygroundEditor = () => {
       const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
       setTableData(displayData);
       setTimeout(() => {
-        hotRef.current?.hotInstance?.render();
+        const hot = hotRef.current?.hotInstance;
+        if (hot) {
+          applySheetMetaToHot(sheets[activeSheetIndex], hot);
+          hot.render();
+        }
       }, 0);
     }
   }, [sheets, activeSheetIndex, tableData.length]);
@@ -378,6 +386,44 @@ const PlaygroundEditor = () => {
     };
   };
 
+  // Apply saved XLSX-style formatting (sheet.data.s) back into Handsontable cell meta for visual persistence
+  const applySheetMetaToHot = (sheet: SheetData, hotInstance: any) => {
+    if (!hotInstance || !sheet) return;
+    const rows = sheet.config?.rowCount || sheet.data.length;
+    const cols = sheet.config?.columnCount || (sheet.data[0]?.length || 0);
+
+    for (let r = 0; r < rows; r++) {
+      const row = sheet.data[r];
+      if (!row) continue;
+      for (let c = 0; c < cols; c++) {
+        const cell = row[c];
+        if (!cell || typeof cell !== 'object' || !cell.s) continue;
+        const s = cell.s as any;
+
+        // Colors: convert ARGB to hex if needed
+        const toHex = (argb?: string) => {
+          if (!argb) return undefined;
+          const v = argb.length === 8 ? argb.substring(2) : argb; // strip alpha if present
+          return `#${v}`.toUpperCase();
+        };
+
+        const bg = toHex(s.fill?.fgColor?.rgb || s.fgColor?.rgb);
+        const fg = toHex(s.font?.color?.rgb);
+
+        if (bg) hotInstance.setCellMeta(r, c, 'bgColor', bg);
+        if (fg) hotInstance.setCellMeta(r, c, 'textColor', fg);
+        if (s.font?.bold !== undefined) hotInstance.setCellMeta(r, c, 'bold', !!s.font.bold);
+        if (s.font?.italic !== undefined) hotInstance.setCellMeta(r, c, 'italic', !!s.font.italic);
+        if (s.font?.strike !== undefined) hotInstance.setCellMeta(r, c, 'strikethrough', !!s.font.strike);
+        if (s.alignment?.horizontal) hotInstance.setCellMeta(r, c, 'alignment', s.alignment.horizontal);
+        if (s.border) {
+          // Simplify to a generic CSS border for visualization
+          hotInstance.setCellMeta(r, c, 'borders', '1px solid #000');
+        }
+      }
+    }
+  };
+
   // Fallback: download and parse original file from storage if edited_data is missing
   const parseFromStorage = async (path: string): Promise<SheetData[] | null> => {
     try {
@@ -491,8 +537,8 @@ const PlaygroundEditor = () => {
       const currentData = getCurrentSheetData();
       const hotInstance = hotRef.current?.hotInstance;
 
-      // Keep the table's data prop in sync with the in-memory grid to avoid revert on re-render
-      setTableData(currentData);
+      // Keep the table's data prop stable to avoid re-render resets
+      // (Do not touch setTableData here)
       
       // Merge current grid values AND cellMeta into sheet while preserving all styles
       const updatedSheets = [...sheets];
@@ -547,11 +593,12 @@ const PlaygroundEditor = () => {
       clearTimeout(autoSaveTimerRef.current);
     }
 
-    // Set new timer for 30 seconds
+    // Set new timer for 5 seconds (debounced)
     autoSaveTimerRef.current = setTimeout(() => {
+      console.log("Autosave: triggering performSave after debounce");
       performSave(false);
-      toast.info("Auto-saved", { duration: 1500 });
-    }, 30000); // 30 seconds
+      toast.info("Auto-saved", { duration: 1200 });
+    }, 5000); // 5 seconds
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -1552,10 +1599,83 @@ const handleFormulaBarChange = (value: string) => {
               dropdownMenu={true}
               outsideClickDeselects={false}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
-              afterChange={() => {
-                if (changeTrackingRef.current) {
-                  setHasUnsavedChanges(true);
+              afterChange={(changes: any[] | null, source: string) => {
+                if (!changes || source === 'loadData') return;
+                const hot = hotRef.current?.hotInstance;
+                if (!hot) return;
+
+                // Clone sheets shallowly to update only active sheet
+                const updatedSheets = [...sheets];
+                const sheet = { ...updatedSheets[activeSheetIndex] } as SheetData;
+                const dataClone = sheet.data.map((row) => Array.isArray(row) ? [...row] : row);
+
+                for (const change of changes) {
+                  const [row, prop, oldVal, newVal] = change;
+                  const col = typeof prop === 'number' ? prop : parseInt(prop, 10);
+                  const meta = hot.getCellMeta(row, col);
+
+                  const hasStyleMeta = !!(meta && (meta.bold !== undefined || meta.italic !== undefined || meta.strikethrough !== undefined || meta.textColor || meta.bgColor || meta.alignment || meta.borders));
+
+                  const ensureCellObj = (existing: any): any => {
+                    if (existing && typeof existing === 'object') return { ...existing };
+                    const baseVal = existing ?? '';
+                    return { v: baseVal, w: baseVal !== '' ? String(baseVal) : '', t: typeof baseVal === 'number' ? 'n' : 's' };
+                  };
+
+                  const applyMetaToStyle = (cellObj: any) => {
+                    const style: any = { ...(cellObj.s || {}) };
+                    const font: any = { ...(style.font || {}) };
+                    if (meta.bold !== undefined) font.bold = !!meta.bold;
+                    if (meta.italic !== undefined) font.italic = !!meta.italic;
+                    if (meta.strikethrough !== undefined) font.strike = !!meta.strikethrough;
+                    if (meta.textColor) font.color = { rgb: hexToXlsxARGB(meta.textColor) };
+                    if (Object.keys(font).length) style.font = font;
+                    if (meta.bgColor) style.fill = { fgColor: { rgb: hexToXlsxARGB(meta.bgColor) } };
+                    if (meta.alignment) style.alignment = { horizontal: meta.alignment };
+                    if (meta.borders) style.border = meta.borders;
+                    if (Object.keys(style).length) cellObj.s = style;
+                  };
+
+                  let cellObj: any = ensureCellObj(dataClone[row]?.[col]);
+
+                  // Handle formulas
+                  if (typeof newVal === 'string' && newVal.trim().startsWith('=')) {
+                    cellObj.f = newVal.trim().slice(1);
+                    delete cellObj.v;
+                    cellObj.w = '';
+                  } else if (newVal === null || newVal === '') {
+                    // Clear value - keep style-only cells if meta exists
+                    delete cellObj.v;
+                    cellObj.w = '';
+                    delete cellObj.f;
+                    if (hasStyleMeta) {
+                      cellObj.t = 'z';
+                      applyMetaToStyle(cellObj);
+                    } else {
+                      cellObj = null;
+                    }
+                  } else {
+                    // Regular value
+                    cellObj.v = newVal;
+                    cellObj.w = String(newVal);
+                    delete cellObj.f;
+                    cellObj.t = typeof newVal === 'number' ? 'n' : 's';
+                    if (hasStyleMeta) applyMetaToStyle(cellObj);
+                  }
+
+                  if (!dataClone[row]) dataClone[row] = [] as any[];
+                  dataClone[row][col] = cellObj;
                 }
+
+                sheet.data = dataClone;
+                sheet.config = {
+                  columnCount: Math.max(sheet.config?.columnCount || 0, hot.countCols()),
+                  rowCount: Math.max(sheet.config?.rowCount || 0, hot.countRows()),
+                  ...(sheet.config || {})
+                };
+                updatedSheets[activeSheetIndex] = sheet;
+                setSheets(updatedSheets);
+                setHasUnsavedChanges(true);
               }}
               undo={true}
               mergeCells={true}
