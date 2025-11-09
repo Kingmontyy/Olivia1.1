@@ -152,37 +152,25 @@ const Playground = () => {
         console.log('Database record created:', fileRecord.id);
         setUploadProgress(70);
 
-        // Step 3: Trigger async parsing (90%)
-        console.log('Triggering parse function...');
+        setUploadProgress(90);
         
-        // Ensure we have a valid session before calling the edge function
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          console.error('Session error:', sessionError);
-          toast.warning('File uploaded but parsing requires authentication. Please refresh and try again.');
-        } else {
-          const { error: parseError } = await supabase.functions.invoke('parse-file', {
-            body: {
-              fileId: fileRecord.id,
-              filePath: uploadData.path
-            }
-          });
-
-          if (parseError) {
-            console.error('Parse function error:', parseError);
-            // Don't fail the upload, just warn the user
-            toast.warning(`File uploaded but parsing delayed. Refresh to check status.`);
-          } else {
-            console.log('Parse function triggered successfully');
+        // Step 3: Trigger async parsing in background (fire and forget)
+        console.log('Triggering background parse...');
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) {
+            supabase.functions.invoke('parse-file', {
+              body: { fileId: fileRecord.id, filePath: uploadData.path }
+            }).then(({ error }) => {
+              if (error) console.error('Background parse error:', error);
+            });
           }
-        }
+        });
 
         setUploadProgress(100);
-        toast.success(`Uploaded: ${file.name}`);
+        toast.success(`${file.name} uploaded! Processing in background...`);
         
-        // Refresh the list after a brief delay to allow parsing
-        setTimeout(() => fetchFiles(), 1000);
+        // Immediate refresh to show the file
+        fetchFiles();
 
       } catch (error: any) {
         console.error("Upload attempt failed:", error);
