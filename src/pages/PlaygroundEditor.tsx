@@ -617,13 +617,18 @@ const applyFillColor = (color: string) => {
       return;
     }
     
-    const selected = hotInstance.getSelected();
-    if (!selected || selected.length === 0) {
+    // Use last selection even if grid lost focus
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
       toast.error("Please select cells first");
       return;
     }
     
-    const [startRow, startCol, endRow, endCol] = selected[0];
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
     
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -641,13 +646,17 @@ const applyTextColor = (color: string) => {
       return;
     }
     
-    const selected = hotInstance.getSelected();
-    if (!selected || selected.length === 0) {
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
       toast.error("Please select cells first");
       return;
     }
     
-    const [startRow, startCol, endRow, endCol] = selected[0];
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
     
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
