@@ -97,6 +97,11 @@ const PlaygroundEditor = () => {
         console.warn("Sheet data empty after evaluation. Showing fallback message.");
       }
       setTableData(displayData);
+      
+      // Force Handsontable to re-render all cells to apply imported styles
+      setTimeout(() => {
+        hotRef.current?.hotInstance?.render();
+      }, 0);
     }
   }, [activeSheetIndex, sheets]);
 
