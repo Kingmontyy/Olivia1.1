@@ -90,20 +90,26 @@ const PlaygroundEditor = () => {
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
       console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
-      // Evaluate formulas and convert to display values using xlsx-calc
       const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
       console.log("Evaluated + converted to display data:", displayData.length, "rows");
-      if (displayData.length === 0) {
-        console.warn("Sheet data empty after evaluation. Showing fallback message.");
-      }
       setTableData(displayData);
-      
       // Force Handsontable to re-render all cells to apply imported styles
       setTimeout(() => {
         hotRef.current?.hotInstance?.render();
       }, 0);
     }
-  }, [activeSheetIndex, sheets]);
+  }, [activeSheetIndex]);
+
+  // Initialize table only on first load to avoid wiping in-progress edits during saves
+  useEffect(() => {
+    if (tableData.length === 0 && sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
+      const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
+      setTableData(displayData);
+      setTimeout(() => {
+        hotRef.current?.hotInstance?.render();
+      }, 0);
+    }
+  }, [sheets, activeSheetIndex, tableData.length]);
 
   useEffect(() => {
     // reset selection guard when switching sheets
