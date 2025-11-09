@@ -74,6 +74,10 @@ export const MenuBar = ({
             New sheet
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onClose}>Open</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={onSave} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save"}
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => handleMock("Make a copy")}>
             Make a copy
           </DropdownMenuItem>

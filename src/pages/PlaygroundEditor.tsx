@@ -359,6 +359,30 @@ const PlaygroundEditor = () => {
     return hotInstance.getData();
   };
 
+  const optimizeSheetData = (sheets: SheetData[]): any[] => {
+    // Remove null/empty cells and unnecessary properties to reduce payload size
+    return sheets.map(sheet => ({
+      name: sheet.name,
+      index: sheet.index,
+      data: sheet.data.map(row => 
+        row.map(cell => {
+          if (!cell || (typeof cell === 'object' && !cell.v && !cell.w)) return null;
+          if (typeof cell === 'object') {
+            // Only keep essential properties
+            const optimized: any = { t: cell.t };
+            if (cell.v !== undefined) optimized.v = cell.v;
+            if (cell.w !== undefined) optimized.w = cell.w;
+            if (cell.f) optimized.f = cell.f;
+            if (cell.s) optimized.s = cell.s;
+            return optimized;
+          }
+          return cell;
+        })
+      ),
+      config: sheet.config
+    }));
+  };
+
   const performSave = async (showToast = true) => {
     if (isSaving) return;
     
@@ -370,15 +394,23 @@ const PlaygroundEditor = () => {
       const updatedSheets = [...sheets];
       updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(updatedSheets[activeSheetIndex], currentData);
 
+      // Optimize data to reduce payload size
+      const optimizedData = optimizeSheetData(updatedSheets);
+
       const { error } = await supabase
         .from("uploaded_files")
         .update({ 
-          edited_data: { sheets: updatedSheets } as any,
+          edited_data: { sheets: optimizedData } as any,
           updated_at: new Date().toISOString()
         })
         .eq("id", fileId);
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '57014') {
+          throw new Error("Save timeout - file too large. Try reducing data size.");
+        }
+        throw error;
+      }
 
       setSheets(updatedSheets);
       setHasUnsavedChanges(false);
@@ -386,10 +418,10 @@ const PlaygroundEditor = () => {
       if (showToast) {
         toast.success("File saved successfully");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving file:", error);
       if (showToast) {
-        toast.error("Failed to save file");
+        toast.error(error.message || "Failed to save file");
       }
     } finally {
       setIsSaving(false);
