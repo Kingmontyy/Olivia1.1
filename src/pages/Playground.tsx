@@ -7,6 +7,7 @@ import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { ConnectivityBanner } from "@/components/ConnectivityBanner";
 
 interface UploadedFile {
   id: string;
@@ -22,11 +23,21 @@ const Playground = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchFiles();
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setConnectionError(null);
+      fetchFiles();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
   }, []);
 
   const fetchFiles = async () => {
@@ -45,9 +56,17 @@ const Playground = () => {
 
       if (error) throw error;
       setFiles(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching files:", error);
-      toast.error("Failed to load files");
+      const msg = error?.message || "";
+      const isFetchFail = msg.includes("Failed to fetch") || error?.name === "TypeError";
+      if (isFetchFail) {
+        setConnectionError("We can’t reach the server right now. Please check your connection and try again.");
+        toast.error("Connection issue: retrying...");
+        setTimeout(fetchFiles, 3000);
+      } else {
+        toast.error("Failed to load files");
+      }
     } finally {
       setLoading(false);
     }
@@ -175,17 +194,24 @@ const Playground = () => {
       } catch (error: any) {
         console.error("Upload attempt failed:", error);
         
-        // Retry logic for transient errors
-        if (retryCount < maxRetries && error.message?.includes('network')) {
+        // Retry logic for transient connectivity errors
+        const isTransient = /network|Failed to fetch|TypeError/i.test(error?.message || '') || error?.name === 'TypeError';
+        if (retryCount < maxRetries && isTransient) {
           retryCount++;
           console.log(`Retrying upload (attempt ${retryCount + 1})...`);
-          toast.info(`Retrying upload...`);
+          toast.info('Connection issue, retrying upload...');
           await new Promise(resolve => setTimeout(resolve, 1000));
           return attemptUpload();
         }
 
         // Show user-friendly error
         const errorMessage = error.message || "Upload failed. Please try again.";
+        const isConnectivity = /Failed to fetch|TypeError/i.test(error?.message || '') || error?.name === 'TypeError';
+        if (isConnectivity) {
+          setConnectionError("We can’t reach the server right now. Please try again shortly.");
+          toast.error("Upload failed due to connection. We'll be ready once you're back online.");
+          return;
+        }
         toast.error(errorMessage);
         throw error;
       }
@@ -264,7 +290,10 @@ const Playground = () => {
             disabled={uploading}
           />
         </div>
-
+        {connectionError && (
+          <ConnectivityBanner message={connectionError} onRetry={fetchFiles} />
+        )}
+        
         {uploading && (
           <Card className="mb-6">
             <CardContent className="pt-6">
