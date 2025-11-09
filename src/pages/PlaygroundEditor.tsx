@@ -505,10 +505,16 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
   // Clear previous styles to avoid carry-over
   td.style.backgroundColor = "";
   td.style.color = "";
+  td.style.fontWeight = "";
+  td.style.fontStyle = "";
+  td.style.textAlign = "";
 
   const meta: any = instance.getCellMeta(row, col);
   let appliedBg = false;
   let appliedText = false;
+  let appliedBold = false;
+  let appliedItalic = false;
+  let appliedAlignment = false;
 
   if (meta?.bgColor) {
     td.style.backgroundColor = meta.bgColor;
@@ -517,6 +523,18 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
   if (meta?.textColor) {
     td.style.color = meta.textColor;
     appliedText = true;
+  }
+  if (meta?.bold !== undefined) {
+    td.style.fontWeight = meta.bold ? 'bold' : 'normal';
+    appliedBold = true;
+  }
+  if (meta?.italic !== undefined) {
+    td.style.fontStyle = meta.italic ? 'italic' : 'normal';
+    appliedItalic = true;
+  }
+  if (meta?.alignment) {
+    td.style.textAlign = meta.alignment;
+    appliedAlignment = true;
   }
 
   // Fallback to XLSX styles when meta not set via toolbar
@@ -534,6 +552,15 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
       const rgb = xlsxStyle.font.color.rgb;
       td.style.color = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
     }
+    if (!appliedBold && xlsxStyle.font?.bold) {
+      td.style.fontWeight = 'bold';
+    }
+    if (!appliedItalic && xlsxStyle.font?.italic) {
+      td.style.fontStyle = 'italic';
+    }
+    if (!appliedAlignment && xlsxStyle.alignment?.horizontal) {
+      td.style.textAlign = xlsxStyle.alignment.horizontal;
+    }
   }
 }, [sheets, activeSheetIndex]);
 
@@ -549,65 +576,192 @@ const handleFormulaBarChange = (value: string) => {
 
   const applyBold = () => {
     const hotInstance = hotRef.current?.hotInstance;
-    if (!hotInstance || !selectedCell) return;
-    
-    const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [startRow, startCol, endRow, endCol] = selected[0];
-      
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    // Apply immediately via meta for instant feedback
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const isBold = hotInstance.getCellMeta(row, col).bold;
+        hotInstance.setCellMeta(row, col, 'bold', !isBold);
+      }
+    }
+    hotInstance.render();
+
+    // Persist into sheet data
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
       for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
         for (let col = startCol; col <= endCol; col++) {
-          const cellMeta = hotInstance.getCellMeta(row, col);
-          hotInstance.setCellMeta(row, col, 'className', 
-            cellMeta.className?.includes('font-bold') 
-              ? cellMeta.className.replace('font-bold', '').trim() 
-              : `${cellMeta.className || ''} font-bold`.trim()
-          );
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          const currentBold = existingStyle.font?.bold || false;
+          cellObj.s = {
+            ...existingStyle,
+            font: {
+              ...(existingStyle.font || {}),
+              bold: !currentBold,
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
         }
       }
-      hotInstance.render();
-    }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
+    toast.success("Bold applied");
   };
 
   const applyItalic = () => {
     const hotInstance = hotRef.current?.hotInstance;
-    if (!hotInstance || !selectedCell) return;
-    
-    const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [startRow, startCol, endRow, endCol] = selected[0];
-      
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    // Apply immediately via meta for instant feedback
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const isItalic = hotInstance.getCellMeta(row, col).italic;
+        hotInstance.setCellMeta(row, col, 'italic', !isItalic);
+      }
+    }
+    hotInstance.render();
+
+    // Persist into sheet data
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
       for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
         for (let col = startCol; col <= endCol; col++) {
-          const cellMeta = hotInstance.getCellMeta(row, col);
-          hotInstance.setCellMeta(row, col, 'className', 
-            cellMeta.className?.includes('italic') 
-              ? cellMeta.className.replace('italic', '').trim() 
-              : `${cellMeta.className || ''} italic`.trim()
-          );
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          const currentItalic = existingStyle.font?.italic || false;
+          cellObj.s = {
+            ...existingStyle,
+            font: {
+              ...(existingStyle.font || {}),
+              italic: !currentItalic,
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
         }
       }
-      hotInstance.render();
-    }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
+    toast.success("Italic applied");
   };
 
   const applyAlignment = (alignment: 'left' | 'center' | 'right') => {
     const hotInstance = hotRef.current?.hotInstance;
-    if (!hotInstance || !selectedCell) return;
-    
-    const selected = hotInstance.getSelected();
-    if (selected && selected.length > 0) {
-      const [startRow, startCol, endRow, endCol] = selected[0];
-      
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    // Apply immediately via meta for instant feedback
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        hotInstance.setCellMeta(row, col, 'alignment', alignment);
+      }
+    }
+    hotInstance.render();
+
+    // Persist into sheet data
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
       for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
         for (let col = startCol; col <= endCol; col++) {
-          let className = hotInstance.getCellMeta(row, col).className || '';
-          className = className.replace(/text-(left|center|right)/g, '').trim();
-          hotInstance.setCellMeta(row, col, 'className', `${className} text-${alignment}`.trim());
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          cellObj.s = {
+            ...existingStyle,
+            alignment: {
+              ...(existingStyle.alignment || {}),
+              horizontal: alignment,
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
         }
       }
-      hotInstance.render();
-    }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
+    toast.success(`Alignment set to ${alignment}`);
   };
 
   // Convert #RRGGBB or #RGB to XLSX ARGB (FFRRGGBB)
