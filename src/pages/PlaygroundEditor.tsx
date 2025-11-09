@@ -229,8 +229,8 @@ const PlaygroundEditor = () => {
   return grid;
   };
 
-  // Merge Handsontable values into existing sheet cells while preserving styles and formulas when possible
-  const mergeHotDataIntoSheet = (sheet: SheetData, hotData: any[][]): SheetData => {
+  // Merge Handsontable values AND cellMeta into existing sheet cells while preserving all styles and formulas
+  const mergeHotDataIntoSheet = (sheet: SheetData, hotData: any[][], hotInstance?: any): SheetData => {
     const rows = Math.max(sheet.data.length, hotData.length);
     const cols = Math.max(sheet.config?.columnCount || 0, (hotData[0]?.length) || 0);
     const newData: any[][] = Array.from({ length: rows }, (_, r) => {
@@ -243,6 +243,9 @@ const PlaygroundEditor = () => {
         const hotVal = hotData?.[r]?.[c];
         const existing = newData[r]?.[c];
         const toStr = (v: any) => (v === null || v === undefined ? '' : String(v));
+
+        // Get cellMeta from Handsontable if available
+        const meta = hotInstance ? hotInstance.getCellMeta(r, c) : null;
 
         if (existing && typeof existing === 'object') {
           const origDisplay = toStr(existing.w ?? existing.v ?? '');
@@ -264,10 +267,68 @@ const PlaygroundEditor = () => {
             delete (updated as any).f;
           }
 
+          // Merge cellMeta styling into XLSX format
+          if (meta) {
+            const existingStyle = updated.s || {};
+            const font = existingStyle.font || {};
+            
+            if (meta.bold !== undefined) font.bold = meta.bold;
+            if (meta.italic !== undefined) font.italic = meta.italic;
+            if (meta.strikethrough !== undefined) font.strike = meta.strikethrough;
+            if (meta.textColor) {
+              font.color = { rgb: meta.textColor.replace('#', '') };
+            }
+            
+            const newStyle: any = { ...existingStyle };
+            if (Object.keys(font).length > 0) newStyle.font = font;
+            if (meta.bgColor) {
+              newStyle.fill = { fgColor: { rgb: meta.bgColor.replace('#', '') } };
+            }
+            if (meta.alignment) {
+              newStyle.alignment = { horizontal: meta.alignment };
+            }
+            if (meta.borders) {
+              newStyle.border = meta.borders;
+            }
+            
+            if (Object.keys(newStyle).length > 0) {
+              updated.s = newStyle;
+            }
+          }
+
           newData[r][c] = updated;
         } else if (hotVal !== undefined && hotVal !== null && hotVal !== '') {
           const type = typeof hotVal === 'number' ? 'n' : 's';
-          newData[r][c] = { v: hotVal, w: toStr(hotVal), t: type };
+          const cellObj: any = { v: hotVal, w: toStr(hotVal), t: type };
+          
+          // Apply cellMeta styling to new cells too
+          if (meta) {
+            const font: any = {};
+            if (meta.bold !== undefined) font.bold = meta.bold;
+            if (meta.italic !== undefined) font.italic = meta.italic;
+            if (meta.strikethrough !== undefined) font.strike = meta.strikethrough;
+            if (meta.textColor) {
+              font.color = { rgb: meta.textColor.replace('#', '') };
+            }
+            
+            const style: any = {};
+            if (Object.keys(font).length > 0) style.font = font;
+            if (meta.bgColor) {
+              style.fill = { fgColor: { rgb: meta.bgColor.replace('#', '') } };
+            }
+            if (meta.alignment) {
+              style.alignment = { horizontal: meta.alignment };
+            }
+            if (meta.borders) {
+              style.border = meta.borders;
+            }
+            
+            if (Object.keys(style).length > 0) {
+              cellObj.s = style;
+            }
+          }
+          
+          newData[r][c] = cellObj;
         } else {
           newData[r][c] = null;
         }
@@ -389,10 +450,15 @@ const PlaygroundEditor = () => {
     try {
       setIsSaving(true);
       const currentData = getCurrentSheetData();
+      const hotInstance = hotRef.current?.hotInstance;
       
-      // Merge current grid values into sheet while preserving styles
+      // Merge current grid values AND cellMeta into sheet while preserving all styles
       const updatedSheets = [...sheets];
-      updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(updatedSheets[activeSheetIndex], currentData);
+      updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(
+        updatedSheets[activeSheetIndex], 
+        currentData, 
+        hotInstance
+      );
 
       // Optimize data to reduce payload size
       const optimizedData = optimizeSheetData(updatedSheets);
@@ -478,10 +544,15 @@ const PlaygroundEditor = () => {
   };
 
   const handleSheetChange = async (index: number) => {
-    // Persist current sheet values into state before switching (preserve styles)
+    // Persist current sheet values AND cellMeta into state before switching (preserve all styles)
     const currentData = getCurrentSheetData();
+    const hotInstance = hotRef.current?.hotInstance;
     const updatedSheets = [...sheets];
-    updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(updatedSheets[activeSheetIndex], currentData);
+    updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(
+      updatedSheets[activeSheetIndex], 
+      currentData,
+      hotInstance
+    );
     setSheets(updatedSheets);
     setActiveSheetIndex(index);
   };
