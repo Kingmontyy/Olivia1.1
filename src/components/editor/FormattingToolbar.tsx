@@ -39,6 +39,7 @@ import {
   BarChart3,
   Filter,
   FunctionSquare,
+  Timer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ColorPicker } from "./ColorPicker";

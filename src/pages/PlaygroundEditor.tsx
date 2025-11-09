@@ -68,6 +68,12 @@ const PlaygroundEditor = () => {
   const hotRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const changeTrackingRef = useRef(false);
+  // Track fine-grained changed cells per sheet ("row,col" strings)
+  const changeSetRef = useRef<Map<number, Set<string>>>(new Map());
+  // Autosave settings
+  const [autosaveInterval, setAutosaveInterval] = useState<number | 'off'>(5000);
+  const autosaveIntervalRef = useRef<number>(5000);
+  const lastAutoSaveAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (fileId) {
@@ -392,36 +398,39 @@ const PlaygroundEditor = () => {
     const rows = sheet.config?.rowCount || sheet.data.length;
     const cols = sheet.config?.columnCount || (sheet.data[0]?.length || 0);
 
-    for (let r = 0; r < rows; r++) {
-      const row = sheet.data[r];
-      if (!row) continue;
-      for (let c = 0; c < cols; c++) {
-        const cell = row[c];
-        if (!cell || typeof cell !== 'object' || !cell.s) continue;
-        const s = cell.s as any;
+    // Batch meta updates to avoid excessive reflows
+    hotInstance.batch(() => {
+      for (let r = 0; r < rows; r++) {
+        const row = sheet.data[r];
+        if (!row) continue;
+        for (let c = 0; c < cols; c++) {
+          const cell = row[c];
+          if (!cell || typeof cell !== 'object' || !cell.s) continue;
+          const s = cell.s as any;
 
-        // Colors: convert ARGB to hex if needed
-        const toHex = (argb?: string) => {
-          if (!argb) return undefined;
-          const v = argb.length === 8 ? argb.substring(2) : argb; // strip alpha if present
-          return `#${v}`.toUpperCase();
-        };
+          // Colors: convert ARGB to hex if needed
+          const toHex = (argb?: string) => {
+            if (!argb) return undefined;
+            const v = argb.length === 8 ? argb.substring(2) : argb; // strip alpha if present
+            return `#${v}`.toUpperCase();
+          };
 
-        const bg = toHex(s.fill?.fgColor?.rgb || s.fgColor?.rgb);
-        const fg = toHex(s.font?.color?.rgb);
+          const bg = toHex(s.fill?.fgColor?.rgb || s.fgColor?.rgb);
+          const fg = toHex(s.font?.color?.rgb);
 
-        if (bg) hotInstance.setCellMeta(r, c, 'bgColor', bg);
-        if (fg) hotInstance.setCellMeta(r, c, 'textColor', fg);
-        if (s.font?.bold !== undefined) hotInstance.setCellMeta(r, c, 'bold', !!s.font.bold);
-        if (s.font?.italic !== undefined) hotInstance.setCellMeta(r, c, 'italic', !!s.font.italic);
-        if (s.font?.strike !== undefined) hotInstance.setCellMeta(r, c, 'strikethrough', !!s.font.strike);
-        if (s.alignment?.horizontal) hotInstance.setCellMeta(r, c, 'alignment', s.alignment.horizontal);
-        if (s.border) {
-          // Simplify to a generic CSS border for visualization
-          hotInstance.setCellMeta(r, c, 'borders', '1px solid #000');
+          if (bg) hotInstance.setCellMeta(r, c, 'bgColor', bg);
+          if (fg) hotInstance.setCellMeta(r, c, 'textColor', fg);
+          if (s.font?.bold !== undefined) hotInstance.setCellMeta(r, c, 'bold', !!s.font.bold);
+          if (s.font?.italic !== undefined) hotInstance.setCellMeta(r, c, 'italic', !!s.font.italic);
+          if (s.font?.strike !== undefined) hotInstance.setCellMeta(r, c, 'strikethrough', !!s.font.strike);
+          if (s.alignment?.horizontal) hotInstance.setCellMeta(r, c, 'alignment', s.alignment.horizontal);
+          if (s.border) {
+            // Simplify to a generic CSS border for visualization
+            hotInstance.setCellMeta(r, c, 'borders', '1px solid #000');
+          }
         }
       }
-    }
+    });
   };
 
   // Fallback: download and parse original file from storage if edited_data is missing
@@ -531,60 +540,124 @@ const PlaygroundEditor = () => {
 
   const performSave = async (showToast = true) => {
     if (isSaving) return;
-    
-    try {
-      setIsSaving(true);
-      const currentData = getCurrentSheetData();
-      const hotInstance = hotRef.current?.hotInstance;
 
-      // Keep the table's data prop stable to avoid re-render resets
-      // (Do not touch setTableData here)
-      
-      // Merge current grid values AND cellMeta into sheet while preserving all styles
-      const updatedSheets = [...sheets];
-      updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(
-        updatedSheets[activeSheetIndex], 
-        currentData, 
-        hotInstance
-      );
+    const attempt = async (tryNum: number): Promise<void> => {
+      try {
+        setIsSaving(true);
+        const hotInstance = hotRef.current?.hotInstance;
 
-      // Optimize data to reduce payload size (preserves style-only cells)
-      const optimizedData = optimizeSheetData(updatedSheets);
-
-      const { error } = await supabase
-        .from("uploaded_files")
-        .update({ 
-          edited_data: { sheets: optimizedData } as any,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", fileId);
-
-      if (error) {
-        if ((error as any).code === '57014') {
-          throw new Error("Save timeout - file too large. Try reducing data size.");
+        // Start from current sheets and ensure latest meta from HOT is merged for active sheet
+        const workingSheets = [...sheets];
+        if (hotInstance) {
+          const currentGrid = hotInstance.getData();
+          workingSheets[activeSheetIndex] = mergeHotDataIntoSheet(
+            workingSheets[activeSheetIndex],
+            currentGrid,
+            hotInstance
+          );
         }
-        throw error as any;
-      }
 
-      setSheets(updatedSheets);
-      setHasUnsavedChanges(false);
-      setLastSaved(new Date());
-      if (showToast) {
-        toast.success("File saved successfully");
+        // Fetch latest server edited_data to merge deltas and avoid overwrites
+        const { data: serverRow, error: loadErr } = await supabase
+          .from('uploaded_files')
+          .select('edited_data')
+          .eq('id', fileId)
+          .single();
+        if (loadErr) throw loadErr;
+
+        const serverEdited: any = serverRow?.edited_data && typeof serverRow.edited_data === 'object'
+          ? serverRow.edited_data
+          : { sheets: [] };
+        if (!Array.isArray(serverEdited.sheets)) serverEdited.sheets = [];
+
+        // Build delta from tracked changes
+        const perSheetChanges = changeSetRef.current;
+        let changedCellsCount = 0;
+
+        const ensureSheetIn = (target: any, srcSheet: SheetData, sheetIndex: number) => {
+          if (!target.sheets[sheetIndex]) {
+            target.sheets[sheetIndex] = {
+              name: srcSheet.name,
+              index: srcSheet.index,
+              data: [],
+              config: { columnCount: srcSheet.config?.columnCount || 0, rowCount: srcSheet.config?.rowCount || 0 },
+            };
+          }
+          const t = target.sheets[sheetIndex];
+          t.name = srcSheet.name;
+          t.index = srcSheet.index;
+          t.config = { columnCount: srcSheet.config?.columnCount || 0, rowCount: srcSheet.config?.rowCount || 0 };
+          return t;
+        };
+
+        perSheetChanges.forEach((cellSet, sheetIdx) => {
+          const srcSheet = workingSheets[sheetIdx];
+          if (!srcSheet) return;
+          const tgtSheet = ensureSheetIn(serverEdited, srcSheet, sheetIdx);
+
+          cellSet.forEach((key) => {
+            const [rStr, cStr] = key.split(',');
+            const r = parseInt(rStr, 10);
+            const c = parseInt(cStr, 10);
+            if (!tgtSheet.data[r]) tgtSheet.data[r] = [];
+            tgtSheet.data[r][c] = srcSheet.data?.[r]?.[c] ?? null;
+            changedCellsCount++;
+          });
+        });
+
+        // If no tracked cells (edge case), fall back to saving the active sheet
+        if (changedCellsCount === 0) {
+          console.warn('No tracked changes found, falling back to saving active sheet delta');
+          const srcSheet = workingSheets[activeSheetIndex];
+          const tgtSheet = ensureSheetIn(serverEdited, srcSheet, activeSheetIndex);
+          const rows = srcSheet.config?.rowCount || srcSheet.data.length;
+          const cols = srcSheet.config?.columnCount || (srcSheet.data[0]?.length || 0);
+          for (let r = 0; r < rows; r++) {
+            if (!srcSheet.data[r]) continue;
+            for (let c = 0; c < cols; c++) {
+              if (srcSheet.data[r] && srcSheet.data[r][c] !== undefined) {
+                if (!tgtSheet.data[r]) tgtSheet.data[r] = [];
+                tgtSheet.data[r][c] = srcSheet.data[r][c];
+                changedCellsCount++;
+              }
+            }
+          }
+        }
+
+        console.log('Saving delta', { changedCellsCount, sheetsAffected: perSheetChanges.size });
+
+        const { error: saveErr } = await supabase
+          .from('uploaded_files')
+          .update({ edited_data: serverEdited as any, updated_at: new Date().toISOString() })
+          .eq('id', fileId);
+
+        if (saveErr) throw saveErr;
+
+        setSheets(workingSheets);
+        setHasUnsavedChanges(false);
+        setLastSaved(new Date());
+        if (showToast) toast.success('File saved successfully');
+        // Clear tracked changes on success
+        changeSetRef.current.clear();
+      } catch (err: any) {
+        console.error(`Error saving file (try ${tryNum})`, err);
+        if (tryNum < 3) {
+          await new Promise((res) => setTimeout(res, 300 * tryNum));
+          return attempt(tryNum + 1);
+        }
+        if (showToast) toast.error(err?.message || 'Failed to save file');
+        throw err;
+      } finally {
+        setIsSaving(false);
       }
-    } catch (error: any) {
-      console.error("Error saving file:", error);
-      if (showToast) {
-        toast.error(error.message || "Failed to save file");
-      }
-    } finally {
-      setIsSaving(false);
-    }
+    };
+
+    return attempt(1);
   };
 
   const handleSave = () => performSave(true);
 
-  // Auto-save functionality
+  // Auto-save functionality with user-configurable interval and 5s floor throttle
   useEffect(() => {
     if (!hasUnsavedChanges || !fileId) return;
 
@@ -593,19 +666,30 @@ const PlaygroundEditor = () => {
       clearTimeout(autoSaveTimerRef.current);
     }
 
-    // Set new timer for 5 seconds (debounced)
+    if (autosaveInterval === 'off') return;
+
+    const effectiveDelay = Math.max(Number(autosaveInterval), 5000);
     autoSaveTimerRef.current = setTimeout(() => {
-      console.log("Autosave: triggering performSave after debounce");
+      const now = Date.now();
+      if (now - lastAutoSaveAtRef.current < 5000) {
+        // Enforce min 5s between saves
+        const remaining = 5000 - (now - lastAutoSaveAtRef.current);
+        console.log(`Autosave throttled, retry in ${remaining}ms`);
+        autoSaveTimerRef.current = setTimeout(() => performSave(false), remaining);
+        return;
+      }
+      console.log("Autosave: triggering performSave after debounce", { effectiveDelay });
+      lastAutoSaveAtRef.current = now;
       performSave(false);
       toast.info("Auto-saved", { duration: 1200 });
-    }, 5000); // 5 seconds
+    }, effectiveDelay);
 
     return () => {
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [hasUnsavedChanges, fileId]);
+  }, [hasUnsavedChanges, fileId, autosaveInterval]);
 
   // Track changes to mark as unsaved
   useEffect(() => {
@@ -1613,6 +1697,17 @@ const handleFormulaBarChange = (value: string) => {
                   const [row, prop, oldVal, newVal] = change;
                   const col = typeof prop === 'number' ? prop : parseInt(prop, 10);
                   const meta = hot.getCellMeta(row, col);
+
+                  console.log('afterChange', { row, col, oldVal, newVal, meta: {
+                    bold: meta?.bold, italic: meta?.italic, strike: meta?.strikethrough,
+                    textColor: meta?.textColor, bgColor: meta?.bgColor, alignment: meta?.alignment, borders: meta?.borders
+                  }});
+
+                  // Track changed cell for delta save
+                  const key = `${row},${col}`;
+                  const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+                  perSheet.add(key);
+                  changeSetRef.current.set(activeSheetIndex, perSheet);
 
                   const hasStyleMeta = !!(meta && (meta.bold !== undefined || meta.italic !== undefined || meta.strikethrough !== undefined || meta.textColor || meta.bgColor || meta.alignment || meta.borders));
 
