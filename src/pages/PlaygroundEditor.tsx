@@ -610,63 +610,141 @@ const handleFormulaBarChange = (value: string) => {
     }
   };
 
-const applyFillColor = (color: string) => {
+  // Convert #RRGGBB or #RGB to XLSX ARGB (FFRRGGBB)
+  const hexToXlsxARGB = (hex: string) => {
+    let h = hex.replace('#', '').trim();
+    if (h.length === 3) {
+      h = h.split('').map((c) => c + c).join('');
+    }
+    if (h.length !== 6) return 'FFFFFFFF';
+    return ('FF' + h).toUpperCase();
+  };
+
+  const applyFillColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) {
       toast.error("Editor not ready");
       return;
     }
-    
-    // Use last selection even if grid lost focus
+
     const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
     if (!sel) {
       toast.error("Please select cells first");
       return;
     }
-    
+
     let [r1, c1, r2, c2] = sel;
     const startRow = Math.min(r1, r2);
     const endRow = Math.max(r1, r2);
     const startCol = Math.min(c1, c2);
     const endCol = Math.max(c1, c2);
-    
+
+    // 1) Apply immediately via meta for instant feedback
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
         hotInstance.setCellMeta(row, col, 'bgColor', color);
       }
     }
     hotInstance.render();
+
+    // 2) Persist into our sheet data styles so it survives rerenders
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
+      for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
+        for (let col = startCol; col <= endCol; col++) {
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          const arbg = hexToXlsxARGB(color);
+          cellObj.s = {
+            ...existingStyle,
+            fill: {
+              ...(existingStyle.fill || {}),
+              fgColor: { rgb: arbg },
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
+        }
+      }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
     toast.success("Fill color applied");
   };
 
-const applyTextColor = (color: string) => {
+  const applyTextColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) {
       toast.error("Editor not ready");
       return;
     }
-    
+
     const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
     if (!sel) {
       toast.error("Please select cells first");
       return;
     }
-    
+
     let [r1, c1, r2, c2] = sel;
     const startRow = Math.min(r1, r2);
     const endRow = Math.max(r1, r2);
     const startCol = Math.min(c1, c2);
     const endCol = Math.max(c1, c2);
-    
+
+    // 1) Apply immediately via meta for instant feedback
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
         hotInstance.setCellMeta(row, col, 'textColor', color);
       }
     }
     hotInstance.render();
+
+    // 2) Persist into our sheet data styles so it survives rerenders
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
+      for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
+        for (let col = startCol; col <= endCol; col++) {
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          const arbg = hexToXlsxARGB(color);
+          cellObj.s = {
+            ...existingStyle,
+            font: {
+              ...(existingStyle.font || {}),
+              color: { rgb: arbg },
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
+        }
+      }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
     toast.success("Text color applied");
   };
-
   if (loading) {
     return (
       <AuthLayout>
