@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HotTable } from "@handsontable/react";
 import { registerAllModules } from "handsontable/registry";
 import "handsontable/dist/handsontable.full.min.css";
+import Handsontable from "handsontable";
 import { Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { MenuBar } from "@/components/editor/MenuBar";
@@ -498,15 +499,53 @@ const PlaygroundEditor = () => {
     }
   }, [activeSheetIndex, sheets]);
 
-  const handleFormulaBarChange = (value: string) => {
-    setFormulaBarValue(value);
-    if (selectedCell) {
-      const hotInstance = hotRef.current?.hotInstance;
-      if (hotInstance) {
-        hotInstance.setDataAtCell(selectedCell.row, selectedCell.col, value);
+const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row: number, col: number, prop: any, value: any, cellProperties: any) => {
+  // Use default text renderer first
+  Handsontable.renderers.TextRenderer(instance, td, row, col, prop, value, cellProperties);
+  // Clear previous styles to avoid carry-over
+  td.style.backgroundColor = "";
+  td.style.color = "";
+
+  const meta: any = instance.getCellMeta(row, col);
+  let appliedBg = false;
+  let appliedText = false;
+
+  if (meta?.bgColor) {
+    td.style.backgroundColor = meta.bgColor;
+    appliedBg = true;
+  }
+  if (meta?.textColor) {
+    td.style.color = meta.textColor;
+    appliedText = true;
+  }
+
+  // Fallback to XLSX styles when meta not set via toolbar
+  const sheet = sheets[activeSheetIndex];
+  const cellObj = sheet?.data?.[row]?.[col];
+  if (cellObj && typeof cellObj === "object" && cellObj.s) {
+    const xlsxStyle = cellObj.s;
+    if (!appliedBg) {
+      const rgb = xlsxStyle.fill?.fgColor?.rgb || xlsxStyle.fgColor?.rgb;
+      if (rgb) {
+        td.style.backgroundColor = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
       }
     }
-  };
+    if (!appliedText && xlsxStyle.font?.color?.rgb) {
+      const rgb = xlsxStyle.font.color.rgb;
+      td.style.color = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
+    }
+  }
+}, [sheets, activeSheetIndex]);
+
+const handleFormulaBarChange = (value: string) => {
+  setFormulaBarValue(value);
+  if (selectedCell) {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (hotInstance) {
+      hotInstance.setDataAtCell(selectedCell.row, selectedCell.col, value);
+    }
+  }
+};
 
   const applyBold = () => {
     const hotInstance = hotRef.current?.hotInstance;
@@ -571,7 +610,7 @@ const PlaygroundEditor = () => {
     }
   };
 
-  const applyFillColor = (color: string) => {
+const applyFillColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) {
       toast.error("Editor not ready");
@@ -588,18 +627,14 @@ const PlaygroundEditor = () => {
     
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
-        const currentStyle = hotInstance.getCellMeta(row, col).style || {};
-        hotInstance.setCellMeta(row, col, 'style', {
-          ...currentStyle,
-          backgroundColor: color
-        });
+        hotInstance.setCellMeta(row, col, 'bgColor', color);
       }
     }
     hotInstance.render();
     toast.success("Fill color applied");
   };
 
-  const applyTextColor = (color: string) => {
+const applyTextColor = (color: string) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) {
       toast.error("Editor not ready");
@@ -616,11 +651,7 @@ const PlaygroundEditor = () => {
     
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
-        const currentStyle = hotInstance.getCellMeta(row, col).style || {};
-        hotInstance.setCellMeta(row, col, 'style', {
-          ...currentStyle,
-          color: color
-        });
+        hotInstance.setCellMeta(row, col, 'textColor', color);
       }
     }
     hotInstance.render();
@@ -709,47 +740,17 @@ const PlaygroundEditor = () => {
               dropdownMenu={true}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
               undo={true}
-              cells={(row: number, col: number) => {
-                const cellProperties: any = {};
+cells={(row: number, col: number) => {
+                const cellProperties: any = { renderer: styledRenderer };
                 const sheet = sheets[activeSheetIndex];
                 const cellObj = sheet?.data?.[row]?.[col];
                 
-                // Apply styles from original XLSX if they exist
                 if (cellObj && typeof cellObj === 'object' && cellObj.s) {
-                  const style: any = {};
-                  const xlsxStyle = cellObj.s;
-                  
-                  // Background color - XLSX stores it in fill.fgColor
-                  if (xlsxStyle.fill?.fgColor?.rgb) {
-                    const rgb = xlsxStyle.fill.fgColor.rgb;
-                    style.backgroundColor = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
-                  } else if (xlsxStyle.fgColor?.rgb) {
-                    const rgb = xlsxStyle.fgColor.rgb;
-                    style.backgroundColor = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
-                  }
-                  
-                  // Text color
-                  if (xlsxStyle.font?.color?.rgb) {
-                    const rgb = xlsxStyle.font.color.rgb;
-                    style.color = rgb.length === 8 ? `#${rgb.substring(2)}` : `#${rgb}`;
-                  }
-                  
                   // Bold/italic from font
                   let className = '';
-                  if (xlsxStyle.font?.bold) {
-                    className += ' font-bold';
-                  }
-                  if (xlsxStyle.font?.italic) {
-                    className += ' italic';
-                  }
-                  
-                  if (className) {
-                    cellProperties.className = className.trim();
-                  }
-                  
-                  if (Object.keys(style).length > 0) {
-                    cellProperties.style = style;
-                  }
+                  if (cellObj.s.font?.bold) className += ' font-bold';
+                  if (cellObj.s.font?.italic) className += ' italic';
+                  if (className) cellProperties.className = className.trim();
                 }
                 
                 return cellProperties;
