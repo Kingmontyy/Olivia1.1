@@ -336,7 +336,33 @@ const PlaygroundEditor = () => {
           
           newData[r][c] = cellObj;
         } else {
-          newData[r][c] = null;
+          // No visible value. If there is styling meta, preserve a style-only cell object
+          const hasStyleMeta = meta && (
+            meta.bold !== undefined ||
+            meta.italic !== undefined ||
+            meta.strikethrough !== undefined ||
+            !!meta.textColor ||
+            !!meta.bgColor ||
+            !!meta.alignment ||
+            !!meta.borders
+          );
+          if (hasStyleMeta) {
+            const styleOnly: any = { t: 'z', w: '' };
+            const font: any = {};
+            if (meta.bold !== undefined) font.bold = meta.bold;
+            if (meta.italic !== undefined) font.italic = meta.italic;
+            if (meta.strikethrough !== undefined) font.strike = meta.strikethrough;
+            if (meta.textColor) font.color = { rgb: meta.textColor.replace('#', '') };
+            const style: any = {};
+            if (Object.keys(font).length > 0) style.font = font;
+            if (meta.bgColor) style.fill = { fgColor: { rgb: meta.bgColor.replace('#', '') } };
+            if (meta.alignment) style.alignment = { horizontal: meta.alignment };
+            if (meta.borders) style.border = meta.borders;
+            if (Object.keys(style).length > 0) styleOnly.s = style;
+            newData[r][c] = styleOnly;
+          } else {
+            newData[r][c] = newData[r][c] ?? null;
+          }
         }
       }
     }
