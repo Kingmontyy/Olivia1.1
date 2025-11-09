@@ -151,7 +151,7 @@ export const ColorPicker = ({ trigger, onColorSelect, type }: ColorPickerProps) 
       <PopoverTrigger asChild>
         {trigger}
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0 bg-popover border shadow-lg z-50" align="start">
+      <PopoverContent className="w-[280px] p-0 bg-popover border shadow-lg z-[9999]" align="start">
         {!showCustomPicker ? (
           <div className="p-3 space-y-3">
             {/* Recent Colors */}
