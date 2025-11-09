@@ -62,7 +62,12 @@ const PlaygroundEditor = () => {
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [gridHeight, setGridHeight] = useState<number>(480);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const hotRef = useRef<any>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const changeTrackingRef = useRef(false);
 
   useEffect(() => {
     if (fileId) {
@@ -293,8 +298,11 @@ const PlaygroundEditor = () => {
     return hotInstance.getData();
   };
 
-  const handleSave = async () => {
+  const performSave = async (showToast = true) => {
+    if (isSaving) return;
+    
     try {
+      setIsSaving(true);
       const currentData = getCurrentSheetData();
       
       // Update current sheet data
@@ -315,12 +323,55 @@ const PlaygroundEditor = () => {
       if (error) throw error;
 
       setSheets(updatedSheets);
-      toast.success("File saved successfully");
+      setHasUnsavedChanges(false);
+      setLastSaved(new Date());
+      if (showToast) {
+        toast.success("File saved successfully");
+      }
     } catch (error) {
       console.error("Error saving file:", error);
-      toast.error("Failed to save file");
+      if (showToast) {
+        toast.error("Failed to save file");
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const handleSave = () => performSave(true);
+
+  // Auto-save functionality
+  useEffect(() => {
+    if (!hasUnsavedChanges || !fileId) return;
+
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Set new timer for 30 seconds
+    autoSaveTimerRef.current = setTimeout(() => {
+      performSave(false);
+      toast.info("Auto-saved", { duration: 1500 });
+    }, 30000); // 30 seconds
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [hasUnsavedChanges, fileId]);
+
+  // Track changes to mark as unsaved
+  useEffect(() => {
+    if (!changeTrackingRef.current) {
+      // Skip initial load
+      changeTrackingRef.current = true;
+      return;
+    }
+    
+    setHasUnsavedChanges(true);
+  }, [sheets, activeSheetIndex]);
 
   const handleAddSheet = () => {
     const newIndex = sheets.length;
@@ -1239,6 +1290,9 @@ const handleFormulaBarChange = (value: string) => {
             onRedo={handleRedo}
             onToggleGridlines={handleToggleGridlines}
             onToggleFormulaBar={handleToggleFormulaBar}
+            isSaving={isSaving}
+            hasUnsavedChanges={hasUnsavedChanges}
+            lastSaved={lastSaved}
           />
 
           {/* Formatting Toolbar */}
@@ -1298,6 +1352,11 @@ const handleFormulaBarChange = (value: string) => {
               dropdownMenu={true}
               outsideClickDeselects={false}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
+              afterChange={() => {
+                if (changeTrackingRef.current) {
+                  setHasUnsavedChanges(true);
+                }
+              }}
               undo={true}
               mergeCells={true}
 cells={(row: number, col: number) => {

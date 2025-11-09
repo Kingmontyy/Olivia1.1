@@ -22,6 +22,9 @@ interface MenuBarProps {
   onRedo: () => void;
   onToggleGridlines: () => void;
   onToggleFormulaBar: () => void;
+  isSaving?: boolean;
+  hasUnsavedChanges?: boolean;
+  lastSaved?: Date | null;
 }
 
 export const MenuBar = ({
@@ -34,9 +37,22 @@ export const MenuBar = ({
   onRedo,
   onToggleGridlines,
   onToggleFormulaBar,
+  isSaving = false,
+  hasUnsavedChanges = false,
+  lastSaved = null,
 }: MenuBarProps) => {
   const handleMock = (feature: string) => {
     toast.info(`${feature} - Coming soon`);
+  };
+
+  const formatLastSaved = () => {
+    if (!lastSaved) return "";
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - lastSaved.getTime()) / 1000);
+    
+    if (diff < 60) return "Saved just now";
+    if (diff < 3600) return `Saved ${Math.floor(diff / 60)} min ago`;
+    return lastSaved.toLocaleTimeString();
   };
 
   return (
@@ -473,6 +489,27 @@ export const MenuBar = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Save Status Indicator */}
+      <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+        {isSaving && (
+          <span className="flex items-center gap-1">
+            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            Saving...
+          </span>
+        )}
+        {!isSaving && hasUnsavedChanges && (
+          <span className="text-amber-600 dark:text-amber-400">
+            Unsaved changes
+          </span>
+        )}
+        {!isSaving && !hasUnsavedChanges && lastSaved && (
+          <span>{formatLastSaved()}</span>
+        )}
+      </div>
     </div>
   );
 };
