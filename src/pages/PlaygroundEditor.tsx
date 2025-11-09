@@ -226,7 +226,63 @@ const PlaygroundEditor = () => {
       grid.push(headers.map(header => row[header] ?? ""));
     });
 
-    return grid;
+  return grid;
+  };
+
+  // Merge Handsontable values into existing sheet cells while preserving styles and formulas when possible
+  const mergeHotDataIntoSheet = (sheet: SheetData, hotData: any[][]): SheetData => {
+    const rows = Math.max(sheet.data.length, hotData.length);
+    const cols = Math.max(sheet.config?.columnCount || 0, (hotData[0]?.length) || 0);
+    const newData: any[][] = Array.from({ length: rows }, (_, r) => {
+      const existingRow = sheet.data[r] || [];
+      return Array.from({ length: cols }, (_, c) => existingRow[c] ?? null);
+    });
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const hotVal = hotData?.[r]?.[c];
+        const existing = newData[r]?.[c];
+        const toStr = (v: any) => (v === null || v === undefined ? '' : String(v));
+
+        if (existing && typeof existing === 'object') {
+          const origDisplay = toStr(existing.w ?? existing.v ?? '');
+          const newDisplay = toStr(hotVal);
+          const type = typeof hotVal === 'number' ? 'n' : (newDisplay === '' ? 'z' : 's');
+          const updated: any = { ...existing, t: type };
+
+          // Update value/format
+          if (newDisplay === '') {
+            delete updated.v;
+            updated.w = '';
+          } else {
+            updated.v = hotVal;
+            updated.w = newDisplay;
+          }
+
+          // Drop formula only if user visibly changed displayed value
+          if ((updated as any).f && newDisplay !== origDisplay) {
+            delete (updated as any).f;
+          }
+
+          newData[r][c] = updated;
+        } else if (hotVal !== undefined && hotVal !== null && hotVal !== '') {
+          const type = typeof hotVal === 'number' ? 'n' : 's';
+          newData[r][c] = { v: hotVal, w: toStr(hotVal), t: type };
+        } else {
+          newData[r][c] = null;
+        }
+      }
+    }
+
+    return {
+      ...sheet,
+      data: newData,
+      config: {
+        columnCount: cols,
+        rowCount: rows,
+        ...(sheet.config || {})
+      }
+    };
   };
 
   // Fallback: download and parse original file from storage if edited_data is missing
@@ -310,12 +366,9 @@ const PlaygroundEditor = () => {
       setIsSaving(true);
       const currentData = getCurrentSheetData();
       
-      // Update current sheet data
+      // Merge current grid values into sheet while preserving styles
       const updatedSheets = [...sheets];
-      updatedSheets[activeSheetIndex] = {
-        ...updatedSheets[activeSheetIndex],
-        data: currentData
-      };
+      updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(updatedSheets[activeSheetIndex], currentData);
 
       const { error } = await supabase
         .from("uploaded_files")
@@ -393,13 +446,10 @@ const PlaygroundEditor = () => {
   };
 
   const handleSheetChange = async (index: number) => {
-    // Save current sheet data before switching
+    // Persist current sheet values into state before switching (preserve styles)
     const currentData = getCurrentSheetData();
     const updatedSheets = [...sheets];
-    updatedSheets[activeSheetIndex] = {
-      ...updatedSheets[activeSheetIndex],
-      data: currentData
-    };
+    updatedSheets[activeSheetIndex] = mergeHotDataIntoSheet(updatedSheets[activeSheetIndex], currentData);
     setSheets(updatedSheets);
     setActiveSheetIndex(index);
   };
