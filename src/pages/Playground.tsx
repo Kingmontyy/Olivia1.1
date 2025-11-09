@@ -155,19 +155,27 @@ const Playground = () => {
         // Step 3: Trigger async parsing (90%)
         console.log('Triggering parse function...');
         
-        const { error: parseError } = await supabase.functions.invoke('parse-file', {
-          body: {
-            fileId: fileRecord.id,
-            filePath: uploadData.path
-          }
-        });
-
-        if (parseError) {
-          console.error('Parse function error:', parseError);
-          // Don't fail the upload, just warn the user
-          toast.warning(`File uploaded but parsing delayed. Refresh to check status.`);
+        // Ensure we have a valid session before calling the edge function
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          console.error('Session error:', sessionError);
+          toast.warning('File uploaded but parsing requires authentication. Please refresh and try again.');
         } else {
-          console.log('Parse function triggered successfully');
+          const { error: parseError } = await supabase.functions.invoke('parse-file', {
+            body: {
+              fileId: fileRecord.id,
+              filePath: uploadData.path
+            }
+          });
+
+          if (parseError) {
+            console.error('Parse function error:', parseError);
+            // Don't fail the upload, just warn the user
+            toast.warning(`File uploaded but parsing delayed. Refresh to check status.`);
+          } else {
+            console.log('Parse function triggered successfully');
+          }
         }
 
         setUploadProgress(100);
