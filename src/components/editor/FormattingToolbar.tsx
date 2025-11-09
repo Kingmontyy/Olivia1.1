@@ -41,6 +41,7 @@ import {
   FunctionSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ColorPicker } from "./ColorPicker";
 
 interface FormattingToolbarProps {
   onUndo: () => void;
@@ -64,19 +65,6 @@ export const FormattingToolbar = ({
   const handleMock = (feature: string) => {
     toast.info(`${feature} - Coming soon`);
   };
-
-  const colorOptions = [
-    { name: 'red', hex: '#ef4444' },
-    { name: 'blue', hex: '#3b82f6' },
-    { name: 'green', hex: '#22c55e' },
-    { name: 'yellow', hex: '#eab308' },
-    { name: 'purple', hex: '#a855f7' },
-    { name: 'orange', hex: '#f97316' },
-    { name: 'pink', hex: '#ec4899' },
-    { name: 'gray', hex: '#6b7280' },
-    { name: 'black', hex: '#000000' },
-    { name: 'white', hex: '#ffffff' },
-  ];
 
   return (
     <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-muted/30 flex-wrap">
@@ -266,47 +254,25 @@ export const FormattingToolbar = ({
         <Strikethrough className="h-4 w-4" />
       </Button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ColorPicker
+        trigger={
           <Button variant="ghost" size="sm" title="Text color" className="h-8 w-8 p-0">
             <Palette className="h-4 w-4" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <div className="grid grid-cols-5 gap-2 p-2">
-            {colorOptions.map((color) => (
-              <button
-                key={color.name}
-                onClick={() => onTextColor(color.hex)}
-                className="h-6 w-6 rounded border border-border hover:scale-110 transition-transform"
-                style={{ backgroundColor: color.hex }}
-                title={color.name}
-              />
-            ))}
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        }
+        onColorSelect={onTextColor}
+        type="text"
+      />
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ColorPicker
+        trigger={
           <Button variant="ghost" size="sm" title="Fill color" className="h-8 w-8 p-0">
             <PaintBucket className="h-4 w-4" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <div className="grid grid-cols-5 gap-2 p-2">
-            {colorOptions.map((color) => (
-              <button
-                key={color.name}
-                onClick={() => onFillColor(color.hex)}
-                className="h-6 w-6 rounded border border-border hover:scale-110 transition-transform"
-                style={{ backgroundColor: color.hex }}
-                title={color.name}
-              />
-            ))}
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        }
+        onColorSelect={onFillColor}
+        type="fill"
+      />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
