@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ColorPicker } from "./ColorPicker";
+import { BorderPicker, BorderOptions } from "./BorderPicker";
 
 interface FormattingToolbarProps {
   onUndo: () => void;
@@ -52,7 +53,7 @@ interface FormattingToolbarProps {
   onAlignment: (alignment: "left" | "center" | "right") => void;
   onFillColor: (color: string) => void;
   onTextColor: (color: string) => void;
-  onBorders: (borderType: 'all' | 'outer' | 'inner' | 'none') => void;
+  onBorders: (options: BorderOptions) => void;
   onMergeCells: (mergeType: 'all' | 'horizontal' | 'vertical' | 'unmerge') => void;
 }
 
@@ -280,27 +281,14 @@ export const FormattingToolbar = ({
         type="fill"
       />
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <BorderPicker
+        trigger={
           <Button variant="ghost" size="sm" title="Borders" className="h-8 w-8 p-0">
             <Grid3x3 className="h-4 w-4" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => onBorders('all')}>
-            All borders
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onBorders('outer')}>
-            Outer borders
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onBorders('inner')}>
-            Inner borders
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onBorders('none')}>
-            No borders
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        }
+        onBorderApply={onBorders}
+      />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -13,6 +13,7 @@ import { Plus, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { MenuBar } from "@/components/editor/MenuBar";
 import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
+import { BorderOptions } from "@/components/editor/BorderPicker";
 import { evaluateDisplayAoA } from "@/lib/xlsx-eval";
 import {
   AlertDialog,
@@ -983,7 +984,7 @@ const handleFormulaBarChange = (value: string) => {
     toast.success("Strikethrough applied");
   };
 
-  const applyBorders = (borderType: 'all' | 'outer' | 'inner' | 'none') => {
+  const applyBorders = (options: BorderOptions) => {
     const hotInstance = hotRef.current?.hotInstance;
     if (!hotInstance) {
       toast.error("Editor not ready");
@@ -1002,27 +1003,88 @@ const handleFormulaBarChange = (value: string) => {
     const startCol = Math.min(c1, c2);
     const endCol = Math.max(c1, c2);
 
-    const borderStyle = borderType === 'none' ? '' : '1px solid #000';
+    // Convert hex color to RGB for XLSX
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? `${parseInt(result[1], 16).toString(16).padStart(2, '0')}${parseInt(result[2], 16).toString(16).padStart(2, '0')}${parseInt(result[3], 16).toString(16).padStart(2, '0')}`.toUpperCase() : '000000';
+    };
 
-    // Apply immediately via meta for instant feedback
+    const thicknessMap: Record<string, string> = {
+      thin: 'thin',
+      medium: 'medium',
+      thick: 'thick'
+    };
+
+    // Generate CSS border string for Handsontable meta
+    const borderWidth = options.thickness === 'thin' ? '1px' : options.thickness === 'medium' ? '2px' : '3px';
+    const borderStyleCss = options.style === 'solid' ? 'solid' : options.style === 'dashed' ? 'dashed' : 'dotted';
+    const cssColor = options.color;
+    const cssBorder = `${borderWidth} ${borderStyleCss} ${cssColor}`;
+
+    // Apply via Handsontable meta for immediate visual feedback
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
-        if (borderType === 'all') {
-          hotInstance.setCellMeta(row, col, 'borders', borderStyle);
-        } else if (borderType === 'outer') {
-          const isEdge = row === startRow || row === endRow || col === startCol || col === endCol;
-          hotInstance.setCellMeta(row, col, 'borders', isEdge ? borderStyle : '');
-        } else if (borderType === 'inner') {
-          const isEdge = row === startRow || row === endRow || col === startCol || col === endCol;
-          hotInstance.setCellMeta(row, col, 'borders', !isEdge ? borderStyle : '');
-        } else {
-          hotInstance.setCellMeta(row, col, 'borders', '');
-        }
+        const borderMeta: any = {};
+        
+        options.positions.forEach(position => {
+          switch (position) {
+            case 'all':
+              borderMeta.top = cssBorder;
+              borderMeta.bottom = cssBorder;
+              borderMeta.left = cssBorder;
+              borderMeta.right = cssBorder;
+              break;
+            case 'outer':
+              if (row === startRow) borderMeta.top = cssBorder;
+              if (row === endRow) borderMeta.bottom = cssBorder;
+              if (col === startCol) borderMeta.left = cssBorder;
+              if (col === endCol) borderMeta.right = cssBorder;
+              break;
+            case 'inner':
+              if (row !== startRow && row !== endRow) {
+                borderMeta.top = cssBorder;
+                borderMeta.bottom = cssBorder;
+              }
+              if (col !== startCol && col !== endCol) {
+                borderMeta.left = cssBorder;
+                borderMeta.right = cssBorder;
+              }
+              break;
+            case 'top':
+              borderMeta.top = cssBorder;
+              break;
+            case 'bottom':
+              borderMeta.bottom = cssBorder;
+              break;
+            case 'left':
+              borderMeta.left = cssBorder;
+              break;
+            case 'right':
+              borderMeta.right = cssBorder;
+              break;
+            case 'horizontal':
+              if (row !== startRow) borderMeta.top = cssBorder;
+              if (row !== endRow) borderMeta.bottom = cssBorder;
+              break;
+            case 'vertical':
+              if (col !== startCol) borderMeta.left = cssBorder;
+              if (col !== endCol) borderMeta.right = cssBorder;
+              break;
+            case 'none':
+              borderMeta.top = '';
+              borderMeta.bottom = '';
+              borderMeta.left = '';
+              borderMeta.right = '';
+              break;
+          }
+        });
+        
+        hotInstance.setCellMeta(row, col, 'borders', borderMeta);
       }
     }
     hotInstance.render();
 
-    // Persist into sheet data
+    // Persist into sheet data (XLSX format)
     const updatedSheets = sheets.map((s, i) => {
       if (i !== activeSheetIndex) return s;
       const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
@@ -1039,21 +1101,67 @@ const handleFormulaBarChange = (value: string) => {
             const val = current ?? '';
             cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
           }
-          const existingStyle = cellObj.s || {};
           
-          if (borderType === 'none') {
-            delete cellObj.s?.border;
-          } else {
-            cellObj.s = {
-              ...existingStyle,
-              border: {
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: { style: 'thin' },
-              },
-            };
-          }
+          if (!cellObj.s) cellObj.s = {};
+          if (!cellObj.s.border) cellObj.s.border = {};
+
+          const borderStyle = {
+            style: thicknessMap[options.thickness],
+            color: { rgb: hexToRgb(options.color) }
+          };
+
+          options.positions.forEach(position => {
+            switch (position) {
+              case 'all':
+                cellObj.s.border = {
+                  top: borderStyle,
+                  bottom: borderStyle,
+                  left: borderStyle,
+                  right: borderStyle
+                };
+                break;
+              case 'outer':
+                if (row === startRow) cellObj.s.border.top = borderStyle;
+                if (row === endRow) cellObj.s.border.bottom = borderStyle;
+                if (col === startCol) cellObj.s.border.left = borderStyle;
+                if (col === endCol) cellObj.s.border.right = borderStyle;
+                break;
+              case 'inner':
+                if (row !== startRow && row !== endRow) {
+                  cellObj.s.border.top = borderStyle;
+                  cellObj.s.border.bottom = borderStyle;
+                }
+                if (col !== startCol && col !== endCol) {
+                  cellObj.s.border.left = borderStyle;
+                  cellObj.s.border.right = borderStyle;
+                }
+                break;
+              case 'top':
+                cellObj.s.border.top = borderStyle;
+                break;
+              case 'bottom':
+                cellObj.s.border.bottom = borderStyle;
+                break;
+              case 'left':
+                cellObj.s.border.left = borderStyle;
+                break;
+              case 'right':
+                cellObj.s.border.right = borderStyle;
+                break;
+              case 'horizontal':
+                if (row !== startRow) cellObj.s.border.top = borderStyle;
+                if (row !== endRow) cellObj.s.border.bottom = borderStyle;
+                break;
+              case 'vertical':
+                if (col !== startCol) cellObj.s.border.left = borderStyle;
+                if (col !== endCol) cellObj.s.border.right = borderStyle;
+                break;
+              case 'none':
+                cellObj.s.border = {};
+                break;
+            }
+          });
+
           sheetClone.data[row][col] = cellObj;
         }
       }
@@ -1061,7 +1169,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
-    toast.success(`Borders ${borderType} applied`);
+    toast.success("Borders applied");
   };
 
   const applyMergeCells = (mergeType: 'all' | 'horizontal' | 'vertical' | 'unmerge') => {
