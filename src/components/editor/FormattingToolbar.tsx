@@ -48,9 +48,12 @@ interface FormattingToolbarProps {
   onRedo: () => void;
   onBold: () => void;
   onItalic: () => void;
+  onStrikethrough: () => void;
   onAlignment: (alignment: "left" | "center" | "right") => void;
   onFillColor: (color: string) => void;
   onTextColor: (color: string) => void;
+  onBorders: (borderType: 'all' | 'outer' | 'inner' | 'none') => void;
+  onMergeCells: (mergeType: 'all' | 'horizontal' | 'vertical' | 'unmerge') => void;
 }
 
 export const FormattingToolbar = ({
@@ -58,9 +61,12 @@ export const FormattingToolbar = ({
   onRedo,
   onBold,
   onItalic,
+  onStrikethrough,
   onAlignment,
   onFillColor,
   onTextColor,
+  onBorders,
+  onMergeCells,
 }: FormattingToolbarProps) => {
   const handleMock = (feature: string) => {
     toast.info(`${feature} - Coming soon`);
@@ -247,7 +253,7 @@ export const FormattingToolbar = ({
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => handleMock("Strikethrough")}
+        onClick={onStrikethrough}
         title="Strikethrough"
         className="h-8 w-8 p-0"
       >
@@ -281,16 +287,16 @@ export const FormattingToolbar = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => handleMock("All borders")}>
+          <DropdownMenuItem onClick={() => onBorders('all')}>
             All borders
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("Outer borders")}>
+          <DropdownMenuItem onClick={() => onBorders('outer')}>
             Outer borders
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("Inner borders")}>
+          <DropdownMenuItem onClick={() => onBorders('inner')}>
             Inner borders
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("No borders")}>
+          <DropdownMenuItem onClick={() => onBorders('none')}>
             No borders
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -303,16 +309,16 @@ export const FormattingToolbar = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem onClick={() => handleMock("Merge all")}>
+          <DropdownMenuItem onClick={() => onMergeCells('all')}>
             Merge all
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("Merge horizontally")}>
+          <DropdownMenuItem onClick={() => onMergeCells('horizontal')}>
             Merge horizontally
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("Merge vertically")}>
+          <DropdownMenuItem onClick={() => onMergeCells('vertical')}>
             Merge vertically
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleMock("Unmerge")}>Unmerge</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onMergeCells('unmerge')}>Unmerge</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

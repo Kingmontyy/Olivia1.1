@@ -508,6 +508,8 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
   td.style.fontWeight = "";
   td.style.fontStyle = "";
   td.style.textAlign = "";
+  td.style.textDecoration = "";
+  td.style.border = "";
 
   const meta: any = instance.getCellMeta(row, col);
   let appliedBg = false;
@@ -515,6 +517,8 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
   let appliedBold = false;
   let appliedItalic = false;
   let appliedAlignment = false;
+  let appliedStrikethrough = false;
+  let appliedBorder = false;
 
   if (meta?.bgColor) {
     td.style.backgroundColor = meta.bgColor;
@@ -535,6 +539,14 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
   if (meta?.alignment) {
     td.style.textAlign = meta.alignment;
     appliedAlignment = true;
+  }
+  if (meta?.strikethrough !== undefined) {
+    td.style.textDecoration = meta.strikethrough ? 'line-through' : 'none';
+    appliedStrikethrough = true;
+  }
+  if (meta?.borders) {
+    td.style.border = meta.borders;
+    appliedBorder = true;
   }
 
   // Fallback to XLSX styles when meta not set via toolbar
@@ -558,8 +570,15 @@ const styledRenderer = useCallback((instance: any, td: HTMLTableCellElement, row
     if (!appliedItalic && xlsxStyle.font?.italic) {
       td.style.fontStyle = 'italic';
     }
+    if (!appliedStrikethrough && xlsxStyle.font?.strike) {
+      td.style.textDecoration = 'line-through';
+    }
     if (!appliedAlignment && xlsxStyle.alignment?.horizontal) {
       td.style.textAlign = xlsxStyle.alignment.horizontal;
+    }
+    if (!appliedBorder && xlsxStyle.border) {
+      const borderStyle = '1px solid #000';
+      td.style.border = borderStyle;
     }
   }
 }, [sheets, activeSheetIndex]);
@@ -899,6 +918,193 @@ const handleFormulaBarChange = (value: string) => {
     setSheets(updatedSheets);
     toast.success("Text color applied");
   };
+
+  const applyStrikethrough = () => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    // Apply immediately via meta for instant feedback
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        const isStrikethrough = hotInstance.getCellMeta(row, col).strikethrough;
+        hotInstance.setCellMeta(row, col, 'strikethrough', !isStrikethrough);
+      }
+    }
+    hotInstance.render();
+
+    // Persist into sheet data
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
+      for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
+        for (let col = startCol; col <= endCol; col++) {
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          const currentStrike = existingStyle.font?.strike || false;
+          cellObj.s = {
+            ...existingStyle,
+            font: {
+              ...(existingStyle.font || {}),
+              strike: !currentStrike,
+            },
+          };
+          sheetClone.data[row][col] = cellObj;
+        }
+      }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
+    toast.success("Strikethrough applied");
+  };
+
+  const applyBorders = (borderType: 'all' | 'outer' | 'inner' | 'none') => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    const borderStyle = borderType === 'none' ? '' : '1px solid #000';
+
+    // Apply immediately via meta for instant feedback
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        if (borderType === 'all') {
+          hotInstance.setCellMeta(row, col, 'borders', borderStyle);
+        } else if (borderType === 'outer') {
+          const isEdge = row === startRow || row === endRow || col === startCol || col === endCol;
+          hotInstance.setCellMeta(row, col, 'borders', isEdge ? borderStyle : '');
+        } else if (borderType === 'inner') {
+          const isEdge = row === startRow || row === endRow || col === startCol || col === endCol;
+          hotInstance.setCellMeta(row, col, 'borders', !isEdge ? borderStyle : '');
+        } else {
+          hotInstance.setCellMeta(row, col, 'borders', '');
+        }
+      }
+    }
+    hotInstance.render();
+
+    // Persist into sheet data
+    const updatedSheets = sheets.map((s, i) => {
+      if (i !== activeSheetIndex) return s;
+      const clonedRows = s.data.map((row) => Array.isArray(row) ? [...row] : row);
+      const sheetClone = { ...s, data: clonedRows } as SheetData;
+
+      for (let row = startRow; row <= endRow; row++) {
+        if (!sheetClone.data[row]) continue;
+        for (let col = startCol; col <= endCol; col++) {
+          const current = sheetClone.data[row][col];
+          let cellObj: any;
+          if (current && typeof current === 'object') {
+            cellObj = { ...current };
+          } else {
+            const val = current ?? '';
+            cellObj = { v: val, w: val !== '' ? String(val) : '', t: typeof val === 'number' ? 'n' : 's' };
+          }
+          const existingStyle = cellObj.s || {};
+          
+          if (borderType === 'none') {
+            delete cellObj.s?.border;
+          } else {
+            cellObj.s = {
+              ...existingStyle,
+              border: {
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: { style: 'thin' },
+              },
+            };
+          }
+          sheetClone.data[row][col] = cellObj;
+        }
+      }
+      return sheetClone;
+    });
+
+    setSheets(updatedSheets);
+    toast.success(`Borders ${borderType} applied`);
+  };
+
+  const applyMergeCells = (mergeType: 'all' | 'horizontal' | 'vertical' | 'unmerge') => {
+    const hotInstance = hotRef.current?.hotInstance;
+    if (!hotInstance) {
+      toast.error("Editor not ready");
+      return;
+    }
+
+    const sel = hotInstance.getSelectedLast() || hotInstance.getSelected()?.[0];
+    if (!sel) {
+      toast.error("Please select cells first");
+      return;
+    }
+
+    let [r1, c1, r2, c2] = sel;
+    const startRow = Math.min(r1, r2);
+    const endRow = Math.max(r1, r2);
+    const startCol = Math.min(c1, c2);
+    const endCol = Math.max(c1, c2);
+
+    const mergeCells = hotInstance.getPlugin('mergeCells');
+    
+    if (mergeType === 'unmerge') {
+      mergeCells.unmerge(startRow, startCol, endRow, endCol);
+      toast.success("Cells unmerged");
+    } else if (mergeType === 'all') {
+      mergeCells.merge(startRow, startCol, endRow, endCol);
+      toast.success("Cells merged");
+    } else if (mergeType === 'horizontal') {
+      for (let row = startRow; row <= endRow; row++) {
+        mergeCells.merge(row, startCol, row, endCol);
+      }
+      toast.success("Cells merged horizontally");
+    } else if (mergeType === 'vertical') {
+      for (let col = startCol; col <= endCol; col++) {
+        mergeCells.merge(startRow, col, endRow, col);
+      }
+      toast.success("Cells merged vertically");
+    }
+    
+    hotInstance.render();
+  };
   if (loading) {
     return (
       <AuthLayout>
@@ -933,9 +1139,12 @@ const handleFormulaBarChange = (value: string) => {
             onRedo={handleRedo}
             onBold={applyBold}
             onItalic={applyItalic}
+            onStrikethrough={applyStrikethrough}
             onAlignment={applyAlignment}
             onFillColor={applyFillColor}
             onTextColor={applyTextColor}
+            onBorders={applyBorders}
+            onMergeCells={applyMergeCells}
           />
 
           {/* File Name Header */}
@@ -982,6 +1191,7 @@ const handleFormulaBarChange = (value: string) => {
               outsideClickDeselects={false}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
               undo={true}
+              mergeCells={true}
 cells={(row: number, col: number) => {
                 const cellProperties: any = { renderer: styledRenderer };
                 const sheet = sheets[activeSheetIndex];
