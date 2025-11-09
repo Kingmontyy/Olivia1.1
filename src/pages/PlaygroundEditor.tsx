@@ -453,16 +453,23 @@ const PlaygroundEditor = () => {
   };
 
   const optimizeSheetData = (sheets: SheetData[]): any[] => {
-    // Remove null/empty cells and unnecessary properties to reduce payload size
+    // Remove truly empty cells while preserving style-only or formula-only cells
     return sheets.map(sheet => ({
       name: sheet.name,
       index: sheet.index,
       data: sheet.data.map(row => 
         row.map(cell => {
-          if (!cell || (typeof cell === 'object' && !cell.v && !cell.w)) return null;
+          if (!cell) return null;
           if (typeof cell === 'object') {
-            // Only keep essential properties
-            const optimized: any = { t: cell.t };
+            // If the cell has neither value nor formatting nor formula, drop it
+            const hasValue = cell.v !== undefined || cell.w !== undefined;
+            const hasStyle = !!cell.s;
+            const hasFormula = !!cell.f;
+            if (!hasValue && !hasStyle && !hasFormula) return null;
+
+            // Keep essential props (including styles even without values)
+            const optimized: any = {};
+            if (cell.t !== undefined) optimized.t = cell.t;
             if (cell.v !== undefined) optimized.v = cell.v;
             if (cell.w !== undefined) optimized.w = cell.w;
             if (cell.f) optimized.f = cell.f;
@@ -483,6 +490,9 @@ const PlaygroundEditor = () => {
       setIsSaving(true);
       const currentData = getCurrentSheetData();
       const hotInstance = hotRef.current?.hotInstance;
+
+      // Keep the table's data prop in sync with the in-memory grid to avoid revert on re-render
+      setTableData(currentData);
       
       // Merge current grid values AND cellMeta into sheet while preserving all styles
       const updatedSheets = [...sheets];
@@ -492,7 +502,7 @@ const PlaygroundEditor = () => {
         hotInstance
       );
 
-      // Optimize data to reduce payload size
+      // Optimize data to reduce payload size (preserves style-only cells)
       const optimizedData = optimizeSheetData(updatedSheets);
 
       const { error } = await supabase
@@ -504,10 +514,10 @@ const PlaygroundEditor = () => {
         .eq("id", fileId);
 
       if (error) {
-        if (error.code === '57014') {
+        if ((error as any).code === '57014') {
           throw new Error("Save timeout - file too large. Try reducing data size.");
         }
-        throw error;
+        throw error as any;
       }
 
       setSheets(updatedSheets);
