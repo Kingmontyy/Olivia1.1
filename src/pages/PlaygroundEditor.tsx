@@ -747,6 +747,7 @@ const applyTextColor = (color: string) => {
               contextMenu={true}
               filters={true}
               dropdownMenu={true}
+              outsideClickDeselects={false}
               afterSelectionEnd={(r: number, c: number) => handleCellSelection(r, c)}
               undo={true}
 cells={(row: number, col: number) => {
