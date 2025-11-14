@@ -92,11 +92,10 @@ const PlaygroundEditor = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
-  // Refs for Handsontable instance and change tracking
+  // Refs for Handsontable instance
   const hotRef = useRef<any>(null);
   
-  // Track changed cells per sheet for save operations (key: "row,col")
-  const changeSetRef = useRef<Map<number, Set<string>>>(new Map());
+  // REMOVED: changeSetRef - no longer tracking individual cell changes since we do full state saves
 
   // Fetch file data on component mount
   useEffect(() => {
@@ -162,6 +161,8 @@ const PlaygroundEditor = () => {
     lastSelectedRef.current = "";
   }, [activeSheetIndex]);
 
+  // FULL LOAD: Load sheet state from edited_data if available, otherwise parse from original file
+  // NO MERGING - always prefer the full saved edited_data if present
   const fetchFileData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -184,7 +185,7 @@ const PlaygroundEditor = () => {
       console.log("[LOAD] File edited_data exists:", !!data.edited_data);
       setFileData(data);
       
-      // Convert stored data to sheet format
+      // FULL LOAD PATH 1: Load from edited_data if it exists and has valid sheets
       if (data.edited_data) {
         const editedData = data.edited_data as any;
         console.log("[LOAD] Edited data structure:", { 
@@ -194,81 +195,47 @@ const PlaygroundEditor = () => {
         });
         
         if (editedData.sheets && Array.isArray(editedData.sheets) && editedData.sheets.length > 0) {
-          // Multi-sheet format - primary load path
-          console.log(`[LOAD] Loading ${editedData.sheets.length} sheets from edited_data.sheets`);
+          // Multi-sheet format - FULL LOAD from saved state (no merging)
+          console.log(`[LOAD] FULL LOAD: Loading ${editedData.sheets.length} sheets from edited_data.sheets`);
           editedData.sheets.forEach((sheet: any, i: number) => {
             const rowCount = sheet.data?.length || 0;
             const colCount = sheet.data?.[0]?.length || 0;
-            const hasNullRows = sheet.data?.some((row: any) => row === null || row === undefined) || false;
-            console.log(`[LOAD] Sheet ${i} (${sheet.name}): ${rowCount} rows, ${colCount} cols, nullRows: ${hasNullRows}`);
+            console.log(`[LOAD] Sheet ${i} (${sheet.name}): ${rowCount} rows, ${colCount} cols`);
             if (sheet.data && sheet.data[0] && sheet.data[0][0]) {
               console.log(`[LOAD] Sheet ${i} first cell:`, sheet.data[0][0]);
             }
           });
-          // Filter out null rows before setting (defensive fix for corrupt data)
+          
+          // Filter out null/undefined rows (defensive guard) before setting sheets
           const cleanedSheets = editedData.sheets.map((sheet: any) => ({
             ...sheet,
             data: sheet.data ? sheet.data.filter((row: any) => row !== null && row !== undefined) : []
           }));
+          
           setSheets(cleanedSheets);
-        } else if (Array.isArray(editedData)) {
-          // Legacy single-sheet format (array of objects)
-          console.log("[LOAD] Converting legacy format (array of objects)");
-          const grid = convertLegacyToGrid(editedData);
-          const sheet: SheetData = {
-            name: "Sheet1",
-            index: 0,
-            data: grid,
-            config: {
-              columnCount: grid[0]?.length || 26,
-              rowCount: grid.length
-            }
-          };
-          setSheets([sheet]);
-          setTableData(grid);
-        } else {
-          // Empty or invalid edited_data — try fallback parse from original file_url in storage
-          console.warn("[LOAD] Empty or invalid edited_data, attempting fallback: parse from storage");
-          if (data.file_url) {
-            const parsedSheets = await parseFromStorage(data.file_url);
-            if (parsedSheets && parsedSheets.length > 0) {
-              console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
-              setSheets(parsedSheets);
-            } else {
-              console.warn("[LOAD] Fallback failed: no data in storage either, creating blank sheet");
-              toast.info("No data found in file. Starting with a blank sheet.");
-              const emptyGrid = createEmptyGrid(50, 26);
-              const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
-              setSheets([sheet]);
-            }
-          } else {
-            // No file URL either: create default blank sheet as last resort
-            console.warn("[LOAD] No file_url found, creating blank sheet");
-            const emptyGrid = createEmptyGrid(50, 26);
-            const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
-            setSheets([sheet]);
-          }
+          setLoading(false);
+          return; // Exit early - we have loaded the full state
         }
-      } else {
-        // No edited_data at all: fallback parse from storage or create blank
-        console.warn("[LOAD] No edited_data, attempting fallback: parse from storage or blank sheet");
-        if (data.file_url) {
-          const parsedSheets = await parseFromStorage(data.file_url);
-          if (parsedSheets && parsedSheets.length > 0) {
-            console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
-            setSheets(parsedSheets);
-          } else {
-            console.warn("[LOAD] Fallback failed: creating blank sheet");
-            const emptyGrid = createEmptyGrid(50, 26);
-            const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
-            setSheets([sheet]);
-          }
+      }
+      
+      // FALLBACK PATH 2: Parse from original uploaded file if edited_data is empty/invalid
+      console.log("[LOAD] FALLBACK: No valid edited_data, parsing from original file_url");
+      if (data.file_url) {
+        const parsedSheets = await parseFromStorage(data.file_url);
+        if (parsedSheets && parsedSheets.length > 0) {
+          console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
+          setSheets(parsedSheets);
         } else {
-          console.warn("[LOAD] No file_url, creating blank sheet");
+          console.warn("[LOAD] Fallback failed: creating blank sheet");
           const emptyGrid = createEmptyGrid(50, 26);
           const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
           setSheets([sheet]);
         }
+      } else {
+        console.warn("[LOAD] No file_url, creating blank sheet");
+        const emptyGrid = createEmptyGrid(50, 26);
+        const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
+        setSheets([sheet]);
       }
     } catch (error) {
       console.error("Error fetching file:", error);
@@ -587,8 +554,9 @@ const PlaygroundEditor = () => {
     }));
   };
 
-  // performSave: Manual save function - FULL STATE write (no delta merge) to prevent blank editor on re-open
-  // This is the ONLY save method - no autosave. Triggered by: MenuBar Save button, Ctrl+S keyboard shortcut, or toolbar button.
+  // FULL OVERWRITE SAVE: We now save the entire sheet state every time to prevent partial data loss on re-open
+  // NO delta merge, NO changeSetRef tracking - just get current state, optimize, and write the full thing
+  // This is the ONLY save method - no autosave. Triggered by: MenuBar Save button, Ctrl+S keyboard shortcut
   const performSave = async () => {
     // Prevent concurrent saves
     if (isSaving) return;
@@ -598,10 +566,11 @@ const PlaygroundEditor = () => {
         setIsSaving(true);
         const hotInstance = hotRef.current?.hotInstance;
 
-        // Step 1: Merge latest Handsontable data and metadata into current sheets state (all values, formulas, styles, borders)
+        // Step 1: Get current full sheets state - merge latest Handsontable data/meta into ACTIVE SHEET ONLY
         const workingSheets = [...sheets];
         if (hotInstance) {
           const currentGrid = hotInstance.getData();
+          // Merge HOT data into active sheet to capture latest edits
           workingSheets[activeSheetIndex] = mergeHotDataIntoSheet(
             workingSheets[activeSheetIndex],
             currentGrid,
@@ -609,20 +578,20 @@ const PlaygroundEditor = () => {
           );
         }
 
-        console.log(`[SAVE] Preparing to save ${workingSheets.length} sheets`);
+        console.log(`[SAVE] FULL OVERWRITE: Preparing to save ${workingSheets.length} sheets`);
         workingSheets.forEach((sheet, i) => {
           const nonEmptyRows = sheet.data.filter((row: any[]) => row && row.some((cell: any) => cell !== null && cell !== undefined && cell !== ''));
           console.log(`[SAVE] Sheet ${i} (${sheet.name}): ${sheet.data.length} total rows, ${nonEmptyRows.length} non-empty rows`);
         });
 
-        // Step 2: Optimize data (remove truly empty cells while preserving styles/formulas/values)
+        // Step 2: Optimize data - remove truly empty rows/cells while preserving styles/formulas
         const optimizedSheets = optimizeSheetData(workingSheets);
 
-        // Step 3: FULL WRITE to Supabase (no delta merge with server - replace edited_data completely)
-        // This prevents partial overwrites that cause blank loads when re-opening the file
+        // Step 3: FULL OVERWRITE to Supabase - replace edited_data completely with current state
+        // NO server fetch, NO delta merge - just write the entire { sheets: ... } object
         const fullStatePayload = { sheets: optimizedSheets };
         
-        console.log(`[SAVE] Writing FULL state to Supabase:`, {
+        console.log(`[SAVE] Writing FULL state to Supabase (complete overwrite):`, {
           sheetCount: optimizedSheets.length,
           firstSheetRows: optimizedSheets[0]?.data?.length || 0,
           firstSheetCols: optimizedSheets[0]?.config?.columnCount || 0
@@ -638,19 +607,17 @@ const PlaygroundEditor = () => {
 
         if (saveErr) throw saveErr;
 
-        console.log(`[SAVE] Successfully wrote to Supabase at ${new Date().toISOString()}`);
+        console.log(`[SAVE] FULL OVERWRITE SUCCESS at ${new Date().toISOString()}`);
 
         // Step 4: Update local state and clear unsaved changes flag
         setSheets(workingSheets);
         setHasUnsavedChanges(false);
         
-        // Step 5: Record save timestamp and show success toast with timestamp
+        // Step 5: Record save timestamp and show success toast
         const saveTime = new Date();
         setLastSaved(saveTime);
         toast.success(`Saved successfully at ${saveTime.toLocaleTimeString()}`, { duration: 3000 });
         
-        // Clear tracked changes on success (no longer needed since we do full writes, but keep for consistency)
-        changeSetRef.current.clear();
       } catch (err: any) {
         console.error(`Error saving file (try ${tryNum})`, err);
         // Retry up to 3 times with exponential backoff
@@ -1019,14 +986,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (bold formatting applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1093,14 +1053,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (italic formatting applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1166,14 +1119,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (alignment formatting applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1248,14 +1194,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (fill color applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // 2) Persist into our sheet data styles so it survives rerenders
     const updatedSheets = sheets.map((s, i) => {
@@ -1321,14 +1260,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (text color applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // 2) Persist into our sheet data styles so it survives rerenders
     const updatedSheets = sheets.map((s, i) => {
@@ -1395,14 +1327,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (strikethrough applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1541,14 +1466,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for manual save (borders applied)
-    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-    for (let row = startRow; row <= endRow; row++) {
-      for (let col = startCol; col <= endCol; col++) {
-        perSheet.add(`${row},${col}`);
-      }
-    }
-    changeSetRef.current.set(activeSheetIndex, perSheet);
+    // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
 
     // Persist into sheet data (XLSX format)
     const updatedSheets = sheets.map((s, i) => {
@@ -1788,11 +1706,7 @@ const handleFormulaBarChange = (value: string) => {
                     textColor: meta?.textColor, bgColor: meta?.bgColor, alignment: meta?.alignment, borders: meta?.borders
                   }});
 
-                  // Track changed cell for manual save (mark as unsaved)
-                  const key = `${row},${col}`;
-                  const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
-                  perSheet.add(key);
-                  changeSetRef.current.set(activeSheetIndex, perSheet);
+                  // REMOVED: changeSetRef tracking - no longer needed since we do full state saves
                   
                   // Mark as having unsaved changes so user is warned
                   setHasUnsavedChanges(true);
