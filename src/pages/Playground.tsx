@@ -1,14 +1,23 @@
+// Core React hooks for state and lifecycle management
 import { useState, useEffect, useRef } from "react";
+// Layout wrapper with authentication checks
 import { AuthLayout } from "@/components/AuthLayout";
+// UI components for cards and buttons
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+// Icons for UI elements
 import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
+// Toast notifications for user feedback
 import { toast } from "sonner";
+// Supabase client for database and storage operations
 import { supabase } from "@/integrations/supabase/client";
+// React Router for navigation
 import { useNavigate } from "react-router-dom";
+// Banner to show connectivity issues
 import { ConnectivityBanner } from "@/components/ConnectivityBanner";
 
+// Interface for uploaded file metadata from database
 interface UploadedFile {
   id: string;
   file_name: string;
@@ -18,19 +27,28 @@ interface UploadedFile {
   file_url: string;
 }
 
+// Main Playground component: File list and upload interface
 const Playground = () => {
+  // State for list of user's uploaded files
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  // Loading state for initial file fetch
   const [loading, setLoading] = useState(true);
+  // Upload in-progress flag
   const [uploading, setUploading] = useState(false);
+  // Upload progress percentage (0-100)
   const [uploadProgress, setUploadProgress] = useState(0);
+  // Error message for connection issues
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  // Reference to hidden file input element
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
+  // Fetch user's files on component mount
   useEffect(() => {
     fetchFiles();
   }, []);
 
+  // Listen for network reconnection and retry fetch
   useEffect(() => {
     const handleOnline = () => {
       setConnectionError(null);
@@ -40,6 +58,7 @@ const Playground = () => {
     return () => window.removeEventListener('online', handleOnline);
   }, []);
 
+  // Fetches all files for the current user from Supabase
   const fetchFiles = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -48,6 +67,7 @@ const Playground = () => {
         return;
       }
 
+      // Query uploaded_files table for user's files
       const { data, error } = await supabase
         .from("uploaded_files")
         .select("*")

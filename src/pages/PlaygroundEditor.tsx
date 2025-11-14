@@ -1,20 +1,32 @@
+// Core React hooks for component state and lifecycle
 import { useState, useEffect, useRef, useCallback } from "react";
+// React Router hooks for navigation and URL params
 import { useParams, useNavigate } from "react-router-dom";
+// Layout wrapper with authentication
 import { AuthLayout } from "@/components/AuthLayout";
+// UI components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// Toast notifications
 import { toast } from "sonner";
+// Supabase client for database operations
 import { supabase } from "@/integrations/supabase/client";
+// Handsontable spreadsheet grid
 import { HotTable } from "@handsontable/react";
 import { registerAllModules } from "handsontable/registry";
 import "handsontable/dist/handsontable.full.min.css";
 import Handsontable from "handsontable";
+// Icons
 import { Plus, Trash2 } from "lucide-react";
+// SheetJS library for Excel file operations
 import * as XLSX from "xlsx";
+// Custom editor components
 import { MenuBar } from "@/components/editor/MenuBar";
 import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
 import { BorderOptions } from "@/components/editor/BorderPicker";
+// Helper to evaluate XLSX cell display values
 import { evaluateDisplayAoA } from "@/lib/xlsx-eval";
+// Alert dialog for confirmations
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,9 +38,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// Register Handsontable modules
+// Register Handsontable modules for full functionality
 registerAllModules();
 
+// File metadata interface
 interface FileData {
   id: string;
   file_name: string;
@@ -37,6 +50,7 @@ interface FileData {
   file_type?: string;
 }
 
+// Sheet structure with data and config
 interface SheetData {
   name: string;
   index: number;
@@ -47,43 +61,61 @@ interface SheetData {
   };
 }
 
+// Main PlaygroundEditor component: Spreadsheet editor with Handsontable
 const PlaygroundEditor = () => {
+  // Get file ID from URL params
   const { fileId } = useParams<{ fileId: string }>();
   const navigate = useNavigate();
+  
+  // File and sheet state
   const [loading, setLoading] = useState(true);
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [tableData, setTableData] = useState<any[][]>([]);
+  
+  // Cell selection and formula bar
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [formulaBarValue, setFormulaBarValue] = useState("");
   const [showFormulaBar, setShowFormulaBar] = useState(true);
+  
+  // Dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newFileName, setNewFileName] = useState("");
+  
+  // Grid dimensions
   const [gridHeight, setGridHeight] = useState<number>(480);
+  
+  // Save state
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  
+  // Refs for Handsontable and autosave
   const hotRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const changeTrackingRef = useRef(false);
-  // Track fine-grained changed cells per sheet ("row,col" strings)
+  
+  // Track changed cells per sheet for delta saving (key: "row,col")
   const changeSetRef = useRef<Map<number, Set<string>>>(new Map());
-  // Autosave settings
+  
+  // Autosave configuration
   const [autosaveInterval, setAutosaveInterval] = useState<number | 'off'>(5000);
   const autosaveIntervalRef = useRef<number>(5000);
   const lastAutoSaveAtRef = useRef<number>(0);
 
+  // Fetch file data on component mount
   useEffect(() => {
     if (fileId) {
       fetchFileData();
     }
   }, [fileId]);
 
+  // Calculate grid height based on window size and visible toolbars
   useEffect(() => {
     const computeHeight = () => {
-      // Approx header/toolbars/tabs space
+      // Approximate header/toolbars/tabs space
       const reserved = showFormulaBar ? 260 : 220;
       const h = Math.max(window.innerHeight - reserved, 300);
       setGridHeight(h);
@@ -93,6 +125,7 @@ const PlaygroundEditor = () => {
     return () => window.removeEventListener("resize", computeHeight);
   }, [showFormulaBar]);
 
+  // Load sheet data and apply meta to Handsontable when sheet changes
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
       console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
