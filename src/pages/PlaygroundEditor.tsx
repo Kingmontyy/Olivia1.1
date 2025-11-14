@@ -87,23 +87,16 @@ const PlaygroundEditor = () => {
   // Grid dimensions
   const [gridHeight, setGridHeight] = useState<number>(480);
   
-  // Save state
+  // Save state - Manual save only (no autosave)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
-  // Refs for Handsontable and autosave
+  // Refs for Handsontable instance and change tracking
   const hotRef = useRef<any>(null);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const changeTrackingRef = useRef(false);
   
-  // Track changed cells per sheet for delta saving (key: "row,col")
+  // Track changed cells per sheet for save operations (key: "row,col")
   const changeSetRef = useRef<Map<number, Set<string>>>(new Map());
-  
-  // Autosave configuration
-  const [autosaveInterval, setAutosaveInterval] = useState<number | 'off'>(5000);
-  const autosaveIntervalRef = useRef<number>(5000);
-  const lastAutoSaveAtRef = useRef<number>(0);
 
   // Fetch file data on component mount
   useEffect(() => {
@@ -571,7 +564,10 @@ const PlaygroundEditor = () => {
     }));
   };
 
-  const performSave = async (showToast = true) => {
+  // performSave: Manual save function - merges all changes (values, formulas, styles, borders) and writes to Supabase
+  // This is the ONLY save method - no autosave. Triggered by: MenuBar Save button, Ctrl+S keyboard shortcut, or toolbar button.
+  const performSave = async () => {
+    // Prevent concurrent saves
     if (isSaving) return;
 
     const attempt = async (tryNum: number): Promise<void> => {
@@ -579,7 +575,7 @@ const PlaygroundEditor = () => {
         setIsSaving(true);
         const hotInstance = hotRef.current?.hotInstance;
 
-        // Start from current sheets and ensure latest meta from HOT is merged for active sheet
+        // Step 1: Merge latest Handsontable data and metadata into current sheets state
         const workingSheets = [...sheets];
         if (hotInstance) {
           const currentGrid = hotInstance.getData();
@@ -590,7 +586,7 @@ const PlaygroundEditor = () => {
           );
         }
 
-        // Fetch latest server edited_data to merge deltas and avoid overwrites
+        // Step 2: Fetch latest server edited_data to merge deltas and avoid overwrites
         const { data: serverRow, error: loadErr } = await supabase
           .from('uploaded_files')
           .select('edited_data')
@@ -603,7 +599,7 @@ const PlaygroundEditor = () => {
           : { sheets: [] };
         if (!Array.isArray(serverEdited.sheets)) serverEdited.sheets = [];
 
-        // Build delta from tracked changes
+        // Step 3: Build delta from tracked changes (changed cells only)
         const perSheetChanges = changeSetRef.current;
         let changedCellsCount = 0;
 
@@ -623,6 +619,7 @@ const PlaygroundEditor = () => {
           return t;
         };
 
+        // Step 4: Merge tracked changes into server data
         perSheetChanges.forEach((cellSet, sheetIdx) => {
           const srcSheet = workingSheets[sheetIdx];
           if (!srcSheet) return;
@@ -638,7 +635,7 @@ const PlaygroundEditor = () => {
           });
         });
 
-        // If no tracked cells (edge case), fall back to saving the active sheet
+        // Step 5: If no tracked cells (edge case), fall back to saving the active sheet
         if (changedCellsCount === 0) {
           console.warn('No tracked changes found, falling back to saving active sheet delta');
           const srcSheet = workingSheets[activeSheetIndex];
@@ -657,8 +654,9 @@ const PlaygroundEditor = () => {
           }
         }
 
-        console.log('Saving delta', { changedCellsCount, sheetsAffected: perSheetChanges.size });
+        console.log('Manual save: saving delta', { changedCellsCount, sheetsAffected: perSheetChanges.size });
 
+        // Step 6: Write to Supabase (full write with merged data)
         const { error: saveErr } = await supabase
           .from('uploaded_files')
           .update({ edited_data: serverEdited as any, updated_at: new Date().toISOString() })
@@ -666,19 +664,25 @@ const PlaygroundEditor = () => {
 
         if (saveErr) throw saveErr;
 
+        // Step 7: Update local state and clear unsaved changes flag
         setSheets(workingSheets);
         setHasUnsavedChanges(false);
-        setLastSaved(new Date());
-        if (showToast) toast.success('File saved successfully');
+        
+        // Step 8: Record save timestamp and show success toast with timestamp
+        const saveTime = new Date();
+        setLastSaved(saveTime);
+        toast.success(`Saved successfully at ${saveTime.toLocaleTimeString()}`, { duration: 3000 });
+        
         // Clear tracked changes on success
         changeSetRef.current.clear();
       } catch (err: any) {
         console.error(`Error saving file (try ${tryNum})`, err);
+        // Retry up to 3 times with exponential backoff
         if (tryNum < 3) {
           await new Promise((res) => setTimeout(res, 300 * tryNum));
           return attempt(tryNum + 1);
         }
-        if (showToast) toast.error(err?.message || 'Failed to save file');
+        toast.error(err?.message || 'Failed to save file after 3 retries');
         throw err;
       } finally {
         setIsSaving(false);
@@ -688,52 +692,47 @@ const PlaygroundEditor = () => {
     return attempt(1);
   };
 
-  const handleSave = () => performSave(true);
+  // handleSave: Wrapper for performSave, called by MenuBar Save button
+  const handleSave = () => performSave();
 
-  // Auto-save functionality with user-configurable interval and 5s floor throttle
+  // Keyboard shortcuts: Ctrl+S (or Cmd+S on Mac) triggers manual save
   useEffect(() => {
-    if (!hasUnsavedChanges || !fileId) return;
-
-    // Clear existing timer
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-
-    if (autosaveInterval === 'off') return;
-
-    const effectiveDelay = Math.max(Number(autosaveInterval), 5000);
-    autoSaveTimerRef.current = setTimeout(() => {
-      const now = Date.now();
-      if (now - lastAutoSaveAtRef.current < 5000) {
-        // Enforce min 5s between saves
-        const remaining = 5000 - (now - lastAutoSaveAtRef.current);
-        console.log(`Autosave throttled, retry in ${remaining}ms`);
-        autoSaveTimerRef.current = setTimeout(() => performSave(false), remaining);
-        return;
-      }
-      console.log("Autosave: triggering performSave after debounce", { effectiveDelay });
-      lastAutoSaveAtRef.current = now;
-      performSave(false);
-      toast.info("Auto-saved", { duration: 1200 });
-    }, effectiveDelay);
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+S (Windows/Linux) or Cmd+S (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault(); // Prevent browser's default save dialog
+        performSave();
       }
     };
-  }, [hasUnsavedChanges, fileId, autosaveInterval]);
 
-  // Track changes to mark as unsaved
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sheets, activeSheetIndex, fileId]); // Re-bind when dependencies change
+
+  // Warn user on page unload/refresh if there are unsaved changes
   useEffect(() => {
-    if (!changeTrackingRef.current) {
-      // Skip initial load
-      changeTrackingRef.current = true;
-      return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        // Modern browsers show a generic message, but setting returnValue triggers the dialog
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Show toast warning if user tries to navigate away with unsaved changes
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      toast.warning("You have unsaved changes", { 
+        duration: 5000,
+        description: "Remember to save your work before leaving this page."
+      });
     }
-    
-    setHasUnsavedChanges(true);
-  }, [sheets, activeSheetIndex]);
+  }, [hasUnsavedChanges]);
 
   const handleAddSheet = () => {
     const newIndex = sheets.length;
@@ -780,7 +779,14 @@ const PlaygroundEditor = () => {
     }
   };
 
+  // handleClose: Navigate to Playground - warn if unsaved changes exist
   const handleClose = () => {
+    if (hasUnsavedChanges) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to leave? Your changes will be lost."
+      );
+      if (!confirmed) return;
+    }
     navigate("/playground");
   };
 
@@ -1037,7 +1043,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (bold formatting applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1111,7 +1117,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (italic formatting applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1184,7 +1190,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (alignment formatting applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1266,7 +1272,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (fill color applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1339,7 +1345,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (text color applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1413,7 +1419,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (strikethrough applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1559,7 +1565,7 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
-    // Track changed cells for autosave
+    // Track changed cells for manual save (borders applied)
     const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
     for (let row = startRow; row <= endRow; row++) {
       for (let col = startCol; col <= endCol; col++) {
@@ -1806,11 +1812,14 @@ const handleFormulaBarChange = (value: string) => {
                     textColor: meta?.textColor, bgColor: meta?.bgColor, alignment: meta?.alignment, borders: meta?.borders
                   }});
 
-                  // Track changed cell for delta save
+                  // Track changed cell for manual save (mark as unsaved)
                   const key = `${row},${col}`;
                   const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
                   perSheet.add(key);
                   changeSetRef.current.set(activeSheetIndex, perSheet);
+                  
+                  // Mark as having unsaved changes so user is warned
+                  setHasUnsavedChanges(true);
 
                   const hasStyleMeta = !!(meta && (meta.bold !== undefined || meta.italic !== undefined || meta.strikethrough !== undefined || meta.textColor || meta.bgColor || meta.alignment || meta.borders));
 
