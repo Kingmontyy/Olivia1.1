@@ -1037,6 +1037,15 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
+
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
       if (i !== activeSheetIndex) return s;
@@ -1070,6 +1079,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Bold applied");
   };
 
@@ -1100,6 +1110,15 @@ const handleFormulaBarChange = (value: string) => {
       }
     }
     hotInstance.render();
+
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1134,6 +1153,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Italic applied");
   };
 
@@ -1163,6 +1183,15 @@ const handleFormulaBarChange = (value: string) => {
       }
     }
     hotInstance.render();
+
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1196,6 +1225,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success(`Alignment set to ${alignment}`);
   };
 
@@ -1236,6 +1266,15 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
+
     // 2) Persist into our sheet data styles so it survives rerenders
     const updatedSheets = sheets.map((s, i) => {
       if (i !== activeSheetIndex) return s;
@@ -1269,6 +1308,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Fill color applied");
   };
 
@@ -1298,6 +1338,15 @@ const handleFormulaBarChange = (value: string) => {
       }
     }
     hotInstance.render();
+
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
 
     // 2) Persist into our sheet data styles so it survives rerenders
     const updatedSheets = sheets.map((s, i) => {
@@ -1332,6 +1381,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Text color applied");
   };
 
@@ -1362,6 +1412,15 @@ const handleFormulaBarChange = (value: string) => {
       }
     }
     hotInstance.render();
+
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
 
     // Persist into sheet data
     const updatedSheets = sheets.map((s, i) => {
@@ -1396,6 +1455,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Strikethrough applied");
   };
 
@@ -1499,6 +1559,15 @@ const handleFormulaBarChange = (value: string) => {
     }
     hotInstance.render();
 
+    // Track changed cells for autosave
+    const perSheet = changeSetRef.current.get(activeSheetIndex) || new Set<string>();
+    for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+        perSheet.add(`${row},${col}`);
+      }
+    }
+    changeSetRef.current.set(activeSheetIndex, perSheet);
+
     // Persist into sheet data (XLSX format)
     const updatedSheets = sheets.map((s, i) => {
       if (i !== activeSheetIndex) return s;
@@ -1584,6 +1653,7 @@ const handleFormulaBarChange = (value: string) => {
     });
 
     setSheets(updatedSheets);
+    setHasUnsavedChanges(true);
     toast.success("Borders applied");
   };
 
