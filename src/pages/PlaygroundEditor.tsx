@@ -121,16 +121,18 @@ const PlaygroundEditor = () => {
   // Load sheet data and apply meta to Handsontable when sheet changes
   useEffect(() => {
     if (sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
-      console.log("Loading sheet data:", sheets[activeSheetIndex]?.data?.length || 0, "rows");
+      console.log(`[RENDER] Active sheet changed to ${activeSheetIndex}`);
       const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
-      console.log("Evaluated + converted to display data:", displayData.length, "rows");
+      console.log(`[RENDER] Evaluated display data: ${displayData.length} rows`);
       setTableData(displayData);
-      // Apply saved meta back to HOT and render
+      // Apply saved meta (styles, borders, etc.) back to Handsontable and force render
       setTimeout(() => {
         const hot = hotRef.current?.hotInstance;
         if (hot) {
+          console.log(`[RENDER] Applying meta to HOT and forcing render`);
           applySheetMetaToHot(sheets[activeSheetIndex], hot);
-          hot.render();
+          hot.loadData(displayData); // Force reload data into grid
+          hot.render(); // Force re-render to show styles
         }
       }, 0);
     }
@@ -139,13 +141,17 @@ const PlaygroundEditor = () => {
   // Initialize table only on first load to avoid wiping in-progress edits during saves
   useEffect(() => {
     if (tableData.length === 0 && sheets.length > 0 && activeSheetIndex >= 0 && activeSheetIndex < sheets.length) {
+      console.log(`[RENDER] First load initialization for sheet ${activeSheetIndex}`);
       const displayData = evaluateDisplayAoA(sheets as any, activeSheetIndex);
+      console.log(`[RENDER] Initial display data: ${displayData.length} rows`);
       setTableData(displayData);
       setTimeout(() => {
         const hot = hotRef.current?.hotInstance;
         if (hot) {
+          console.log(`[RENDER] Initial meta apply and render`);
           applySheetMetaToHot(sheets[activeSheetIndex], hot);
-          hot.render();
+          hot.loadData(displayData); // Ensure data is loaded
+          hot.render(); // Force render
         }
       }, 0);
     }
@@ -174,29 +180,40 @@ const PlaygroundEditor = () => {
 
       if (error) throw error;
 
-      console.log("Loaded file data:", data);
-      console.log("File edited_data:", data.edited_data);
+      console.log("[LOAD] Loaded file data:", { id: data.id, file_name: data.file_name });
+      console.log("[LOAD] File edited_data exists:", !!data.edited_data);
       setFileData(data);
       
       // Convert stored data to sheet format
       if (data.edited_data) {
         const editedData = data.edited_data as any;
-        console.log("Edited data structure:", editedData);
-        console.log("Has sheets array:", editedData.sheets ? "YES" : "NO");
+        console.log("[LOAD] Edited data structure:", { 
+          hasSheets: !!editedData.sheets, 
+          isArray: Array.isArray(editedData.sheets),
+          sheetCount: editedData.sheets?.length || 0
+        });
         
-        if (editedData.sheets && Array.isArray(editedData.sheets)) {
-          // Multi-sheet format
-          console.log("Loading multi-sheet format, sheets:", editedData.sheets.length);
+        if (editedData.sheets && Array.isArray(editedData.sheets) && editedData.sheets.length > 0) {
+          // Multi-sheet format - primary load path
+          console.log(`[LOAD] Loading ${editedData.sheets.length} sheets from edited_data.sheets`);
           editedData.sheets.forEach((sheet: any, i: number) => {
-            console.log(`Sheet ${i} (${sheet.name}): ${sheet.data?.length || 0} rows, ${sheet.data?.[0]?.length || 0} cols`);
+            const rowCount = sheet.data?.length || 0;
+            const colCount = sheet.data?.[0]?.length || 0;
+            const hasNullRows = sheet.data?.some((row: any) => row === null || row === undefined) || false;
+            console.log(`[LOAD] Sheet ${i} (${sheet.name}): ${rowCount} rows, ${colCount} cols, nullRows: ${hasNullRows}`);
             if (sheet.data && sheet.data[0] && sheet.data[0][0]) {
-              console.log(`Sheet ${i} first cell:`, sheet.data[0][0]);
+              console.log(`[LOAD] Sheet ${i} first cell:`, sheet.data[0][0]);
             }
           });
-          setSheets(editedData.sheets);
+          // Filter out null rows before setting (defensive fix for corrupt data)
+          const cleanedSheets = editedData.sheets.map((sheet: any) => ({
+            ...sheet,
+            data: sheet.data ? sheet.data.filter((row: any) => row !== null && row !== undefined) : []
+          }));
+          setSheets(cleanedSheets);
         } else if (Array.isArray(editedData)) {
           // Legacy single-sheet format (array of objects)
-          console.log("Converting legacy format");
+          console.log("[LOAD] Converting legacy format (array of objects)");
           const grid = convertLegacyToGrid(editedData);
           const sheet: SheetData = {
             name: "Sheet1",
@@ -210,38 +227,44 @@ const PlaygroundEditor = () => {
           setSheets([sheet]);
           setTableData(grid);
         } else {
-          // Empty or invalid data — try fallback parse from storage
-          console.warn("Empty or invalid data, attempting storage parse fallback");
+          // Empty or invalid edited_data — try fallback parse from original file_url in storage
+          console.warn("[LOAD] Empty or invalid edited_data, attempting fallback: parse from storage");
           if (data.file_url) {
             const parsedSheets = await parseFromStorage(data.file_url);
             if (parsedSheets && parsedSheets.length > 0) {
+              console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
               setSheets(parsedSheets);
             } else {
-              toast.info("No data found in file. Please re-upload or start with a blank sheet.");
+              console.warn("[LOAD] Fallback failed: no data in storage either, creating blank sheet");
+              toast.info("No data found in file. Starting with a blank sheet.");
               const emptyGrid = createEmptyGrid(50, 26);
               const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
               setSheets([sheet]);
             }
           } else {
-            toast.info("No data found in file. Please re-upload or start with a blank sheet.");
+            // No file URL either: create default blank sheet as last resort
+            console.warn("[LOAD] No file_url found, creating blank sheet");
             const emptyGrid = createEmptyGrid(50, 26);
             const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
             setSheets([sheet]);
           }
         }
       } else {
-        // No parsed data yet — try to parse original upload from storage
-        console.log("No parsed data found, attempting storage parse");
+        // No edited_data at all: fallback parse from storage or create blank
+        console.warn("[LOAD] No edited_data, attempting fallback: parse from storage or blank sheet");
         if (data.file_url) {
           const parsedSheets = await parseFromStorage(data.file_url);
           if (parsedSheets && parsedSheets.length > 0) {
+            console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
             setSheets(parsedSheets);
           } else {
+            console.warn("[LOAD] Fallback failed: creating blank sheet");
             const emptyGrid = createEmptyGrid(50, 26);
             const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
             setSheets([sheet]);
           }
         } else {
+          console.warn("[LOAD] No file_url, creating blank sheet");
           const emptyGrid = createEmptyGrid(50, 26);
           const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
           setSheets([sheet]);
@@ -564,7 +587,7 @@ const PlaygroundEditor = () => {
     }));
   };
 
-  // performSave: Manual save function - merges all changes (values, formulas, styles, borders) and writes to Supabase
+  // performSave: Manual save function - FULL STATE write (no delta merge) to prevent blank editor on re-open
   // This is the ONLY save method - no autosave. Triggered by: MenuBar Save button, Ctrl+S keyboard shortcut, or toolbar button.
   const performSave = async () => {
     // Prevent concurrent saves
@@ -575,7 +598,7 @@ const PlaygroundEditor = () => {
         setIsSaving(true);
         const hotInstance = hotRef.current?.hotInstance;
 
-        // Step 1: Merge latest Handsontable data and metadata into current sheets state
+        // Step 1: Merge latest Handsontable data and metadata into current sheets state (all values, formulas, styles, borders)
         const workingSheets = [...sheets];
         if (hotInstance) {
           const currentGrid = hotInstance.getData();
@@ -586,94 +609,47 @@ const PlaygroundEditor = () => {
           );
         }
 
-        // Step 2: Fetch latest server edited_data to merge deltas and avoid overwrites
-        const { data: serverRow, error: loadErr } = await supabase
-          .from('uploaded_files')
-          .select('edited_data')
-          .eq('id', fileId)
-          .single();
-        if (loadErr) throw loadErr;
-
-        const serverEdited: any = serverRow?.edited_data && typeof serverRow.edited_data === 'object'
-          ? serverRow.edited_data
-          : { sheets: [] };
-        if (!Array.isArray(serverEdited.sheets)) serverEdited.sheets = [];
-
-        // Step 3: Build delta from tracked changes (changed cells only)
-        const perSheetChanges = changeSetRef.current;
-        let changedCellsCount = 0;
-
-        const ensureSheetIn = (target: any, srcSheet: SheetData, sheetIndex: number) => {
-          if (!target.sheets[sheetIndex]) {
-            target.sheets[sheetIndex] = {
-              name: srcSheet.name,
-              index: srcSheet.index,
-              data: [],
-              config: { columnCount: srcSheet.config?.columnCount || 0, rowCount: srcSheet.config?.rowCount || 0 },
-            };
-          }
-          const t = target.sheets[sheetIndex];
-          t.name = srcSheet.name;
-          t.index = srcSheet.index;
-          t.config = { columnCount: srcSheet.config?.columnCount || 0, rowCount: srcSheet.config?.rowCount || 0 };
-          return t;
-        };
-
-        // Step 4: Merge tracked changes into server data
-        perSheetChanges.forEach((cellSet, sheetIdx) => {
-          const srcSheet = workingSheets[sheetIdx];
-          if (!srcSheet) return;
-          const tgtSheet = ensureSheetIn(serverEdited, srcSheet, sheetIdx);
-
-          cellSet.forEach((key) => {
-            const [rStr, cStr] = key.split(',');
-            const r = parseInt(rStr, 10);
-            const c = parseInt(cStr, 10);
-            if (!tgtSheet.data[r]) tgtSheet.data[r] = [];
-            tgtSheet.data[r][c] = srcSheet.data?.[r]?.[c] ?? null;
-            changedCellsCount++;
-          });
+        console.log(`[SAVE] Preparing to save ${workingSheets.length} sheets`);
+        workingSheets.forEach((sheet, i) => {
+          const nonEmptyRows = sheet.data.filter((row: any[]) => row && row.some((cell: any) => cell !== null && cell !== undefined && cell !== ''));
+          console.log(`[SAVE] Sheet ${i} (${sheet.name}): ${sheet.data.length} total rows, ${nonEmptyRows.length} non-empty rows`);
         });
 
-        // Step 5: If no tracked cells (edge case), fall back to saving the active sheet
-        if (changedCellsCount === 0) {
-          console.warn('No tracked changes found, falling back to saving active sheet delta');
-          const srcSheet = workingSheets[activeSheetIndex];
-          const tgtSheet = ensureSheetIn(serverEdited, srcSheet, activeSheetIndex);
-          const rows = srcSheet.config?.rowCount || srcSheet.data.length;
-          const cols = srcSheet.config?.columnCount || (srcSheet.data[0]?.length || 0);
-          for (let r = 0; r < rows; r++) {
-            if (!srcSheet.data[r]) continue;
-            for (let c = 0; c < cols; c++) {
-              if (srcSheet.data[r] && srcSheet.data[r][c] !== undefined) {
-                if (!tgtSheet.data[r]) tgtSheet.data[r] = [];
-                tgtSheet.data[r][c] = srcSheet.data[r][c];
-                changedCellsCount++;
-              }
-            }
-          }
-        }
+        // Step 2: Optimize data (remove truly empty cells while preserving styles/formulas/values)
+        const optimizedSheets = optimizeSheetData(workingSheets);
 
-        console.log('Manual save: saving delta', { changedCellsCount, sheetsAffected: perSheetChanges.size });
+        // Step 3: FULL WRITE to Supabase (no delta merge with server - replace edited_data completely)
+        // This prevents partial overwrites that cause blank loads when re-opening the file
+        const fullStatePayload = { sheets: optimizedSheets };
+        
+        console.log(`[SAVE] Writing FULL state to Supabase:`, {
+          sheetCount: optimizedSheets.length,
+          firstSheetRows: optimizedSheets[0]?.data?.length || 0,
+          firstSheetCols: optimizedSheets[0]?.config?.columnCount || 0
+        });
 
-        // Step 6: Write to Supabase (full write with merged data)
         const { error: saveErr } = await supabase
           .from('uploaded_files')
-          .update({ edited_data: serverEdited as any, updated_at: new Date().toISOString() })
+          .update({ 
+            edited_data: fullStatePayload as any, 
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', fileId);
 
         if (saveErr) throw saveErr;
 
-        // Step 7: Update local state and clear unsaved changes flag
+        console.log(`[SAVE] Successfully wrote to Supabase at ${new Date().toISOString()}`);
+
+        // Step 4: Update local state and clear unsaved changes flag
         setSheets(workingSheets);
         setHasUnsavedChanges(false);
         
-        // Step 8: Record save timestamp and show success toast with timestamp
+        // Step 5: Record save timestamp and show success toast with timestamp
         const saveTime = new Date();
         setLastSaved(saveTime);
         toast.success(`Saved successfully at ${saveTime.toLocaleTimeString()}`, { duration: 3000 });
         
-        // Clear tracked changes on success
+        // Clear tracked changes on success (no longer needed since we do full writes, but keep for consistency)
         changeSetRef.current.clear();
       } catch (err: any) {
         console.error(`Error saving file (try ${tryNum})`, err);
