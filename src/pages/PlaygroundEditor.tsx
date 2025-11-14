@@ -524,11 +524,10 @@ const PlaygroundEditor = () => {
   };
 
   const optimizeSheetData = (sheets: SheetData[]): any[] => {
-    // Remove truly empty cells while preserving style-only or formula-only cells
-    return sheets.map(sheet => ({
-      name: sheet.name,
-      index: sheet.index,
-      data: sheet.data.map(row => 
+    // Remove truly empty cells AND empty rows while preserving style-only or formula-only cells
+    return sheets.map(sheet => {
+      // First pass: optimize cells within each row
+      const optimizedRows = sheet.data.map(row => 
         row.map(cell => {
           if (!cell) return null;
           if (typeof cell === 'object') {
@@ -549,9 +548,33 @@ const PlaygroundEditor = () => {
           }
           return cell;
         })
-      ),
-      config: sheet.config
-    }));
+      );
+
+      // Second pass: find last non-empty row to trim trailing empty rows
+      let lastNonEmptyRowIndex = -1;
+      for (let i = optimizedRows.length - 1; i >= 0; i--) {
+        const row = optimizedRows[i];
+        // Check if row has ANY non-null cell
+        if (row && row.some(cell => cell !== null && cell !== undefined)) {
+          lastNonEmptyRowIndex = i;
+          break;
+        }
+      }
+
+      // Trim to last non-empty row + 1 (or keep at least 1 row)
+      const trimmedData = lastNonEmptyRowIndex >= 0 
+        ? optimizedRows.slice(0, lastNonEmptyRowIndex + 1)
+        : [optimizedRows[0] || []]; // Keep at least one row
+
+      console.log(`[OPTIMIZE] Sheet "${sheet.name}": ${sheet.data.length} rows → ${trimmedData.length} rows (removed ${sheet.data.length - trimmedData.length} empty trailing rows)`);
+
+      return {
+        name: sheet.name,
+        index: sheet.index,
+        data: trimmedData,
+        config: sheet.config
+      };
+    });
   };
 
   // FULL OVERWRITE SAVE: We now save the entire sheet state every time to prevent partial data loss on re-open
