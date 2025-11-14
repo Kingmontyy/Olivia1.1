@@ -1,4 +1,6 @@
+// Core React hook for state management
 import { useState } from "react";
+// Dropdown menu components from Radix UI
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,9 +11,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+// Button component
 import { Button } from "@/components/ui/button";
+// Toast notifications
 import { toast } from "sonner";
 
+// Props interface for MenuBar component callbacks
 interface MenuBarProps {
   onSave: () => void;
   onExport: () => void;
@@ -27,6 +32,7 @@ interface MenuBarProps {
   lastSaved?: Date | null;
 }
 
+// MenuBar component: Top menu bar with File/Edit/View/Insert/Format/Data/Tools/Help menus
 export const MenuBar = ({
   onSave,
   onExport,
@@ -41,10 +47,12 @@ export const MenuBar = ({
   hasUnsavedChanges = false,
   lastSaved = null,
 }: MenuBarProps) => {
+  // Helper to show "Coming soon" for unimplemented features
   const handleMock = (feature: string) => {
     toast.info(`${feature} - Coming soon`);
   };
 
+  // Formats the last saved timestamp for display
   const formatLastSaved = () => {
     if (!lastSaved) return "";
     const now = new Date();

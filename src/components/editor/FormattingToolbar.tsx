@@ -1,3 +1,4 @@
+// UI components for buttons and dropdowns
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+// Icons for formatting actions
 import {
   Undo,
   Redo,
@@ -41,10 +43,13 @@ import {
   FunctionSquare,
   Timer,
 } from "lucide-react";
+// Toast notifications
 import { toast } from "sonner";
+// Custom color and border picker components
 import { ColorPicker } from "./ColorPicker";
 import { BorderPicker, BorderOptions } from "./BorderPicker";
 
+// Props interface for FormattingToolbar callbacks
 interface FormattingToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
@@ -58,6 +63,7 @@ interface FormattingToolbarProps {
   onMergeCells: (mergeType: 'all' | 'horizontal' | 'vertical' | 'unmerge') => void;
 }
 
+// FormattingToolbar component: Cell formatting controls (bold, colors, borders, etc.)
 export const FormattingToolbar = ({
   onUndo,
   onRedo,
@@ -70,6 +76,7 @@ export const FormattingToolbar = ({
   onBorders,
   onMergeCells,
 }: FormattingToolbarProps) => {
+  // Helper to show "Coming soon" for unimplemented features
   const handleMock = (feature: string) => {
     toast.info(`${feature} - Coming soon`);
   };
