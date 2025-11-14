@@ -502,7 +502,7 @@ export const MenuBar = ({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Save Status Indicator */}
+      {/* Save Status Indicator - Shows saving state, unsaved changes warning (red dot), or last saved time */}
       <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
         {isSaving && (
           <span className="flex items-center gap-1">
@@ -514,7 +514,8 @@ export const MenuBar = ({
           </span>
         )}
         {!isSaving && hasUnsavedChanges && (
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
             Unsaved changes
           </span>
         )}
