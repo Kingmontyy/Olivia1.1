@@ -1882,10 +1882,17 @@ cells={(row: number, col: number) => {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <Input
+              key={showRenameDialog ? 'rename-input' : 'hidden'}
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleRenameConfirm();
+                }
+              }}
               placeholder="File name"
               className="my-4"
+              autoFocus
             />
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
