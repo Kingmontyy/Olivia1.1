@@ -1794,7 +1794,7 @@ const handleFormulaBarChange = (value: string) => {
         </div>
 
         {/* Scrollable Content Section - PREVENTS PAGE SCROLL */}
-        <div className="flex-1 flex flex-col overflow-hidden fixed inset-0 top-16">  {/* top-16 = height of your top navbar */}
+        <div className="flex-1 flex flex-col overflow-hidden">  {/* top-16 = height of your top navbar */}
           {/* Main Grid - ENABLES GRID-ONLY SCROLL*/}
           <div className="flex-1 overflow-auto min-h-0">
             <HotTable
