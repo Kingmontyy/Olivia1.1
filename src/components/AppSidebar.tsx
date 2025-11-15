@@ -25,9 +25,9 @@ import { Separator } from "@/components/ui/separator";
 
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Playground", url: "/playground", icon: PlaySquare },
   { title: "Forecasts", url: "/forecasts", icon: TrendingUp },
   { title: "Scenarios", url: "/scenarios", icon: GitBranch },
-  { title: "Playground", url: "/playground", icon: PlaySquare },
   { title: "Favorites", url: "/favorites", icon: Star },
   { title: "Vision", url: "/vision", icon: Eye },
 ];
