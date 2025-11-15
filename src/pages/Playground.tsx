@@ -420,6 +420,58 @@ const Playground = () => {
     }
   };
 
+  const handleCopyCoreFile = async (file: UploadedFile) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in to copy files");
+        return;
+      }
+
+      toast.loading("Creating copy...");
+
+      // Download the original file from storage
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from("uploaded-files")
+        .download(file.file_url.split("/uploaded-files/")[1]);
+
+      if (downloadError) throw downloadError;
+
+      // Create a new file name
+      const copyFileName = `Copy of ${file.file_name}`;
+      const filePath = `${user.id}/${Date.now()}_${copyFileName}`;
+
+      // Upload the copy to storage
+      const { error: uploadError } = await supabase.storage
+        .from("uploaded-files")
+        .upload(filePath, fileData);
+
+      if (uploadError) throw uploadError;
+
+      // Insert the copy into the database (not as a core file)
+      const { error: dbError } = await supabase
+        .from("uploaded_files")
+        .insert({
+          user_id: user.id,
+          file_name: copyFileName,
+          file_type: file.file_type,
+          file_url: filePath,
+          is_core_file: false,
+          core_file_type: null,
+        });
+
+      if (dbError) throw dbError;
+
+      toast.dismiss();
+      toast.success("Copy created successfully in Your Files");
+      fetchFiles();
+    } catch (error) {
+      console.error("Error copying file:", error);
+      toast.dismiss();
+      toast.error("Failed to create copy");
+    }
+  };
+
   const renderCoreFileSlot = (
     type: "proforma" | "inventory_logistics" | "cashflow",
     label: string
@@ -439,13 +491,22 @@ const Playground = () => {
                 </p>
               </div>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => navigate(`/playground/${file.id}`)}
-            >
-              View
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate(`/playground/${file.id}`)}
+              >
+                View
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleCopyCoreFile(file)}
+              >
+                Make a Copy
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="text-center text-muted-foreground">
