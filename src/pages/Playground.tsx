@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 // Icons for UI elements
-import { FileSpreadsheet, Plus, Upload, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Plus, Upload, Trash2, Lock, ArrowRight } from "lucide-react";
 // Toast notifications for user feedback
 import { toast } from "sonner";
 // Supabase client for database and storage operations
@@ -16,6 +16,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 // Banner to show connectivity issues
 import { ConnectivityBanner } from "@/components/ConnectivityBanner";
+// Replace file confirmation dialog
+import { ReplaceFileDialog } from "@/components/ReplaceFileDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Interface for uploaded file metadata from database
 interface UploadedFile {
@@ -31,6 +39,16 @@ interface UploadedFile {
 const Playground = () => {
   // State for list of user's uploaded files
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  // State for core files
+  const [coreFiles, setCoreFiles] = useState<{
+    proforma: UploadedFile | null;
+    inventory_logistics: UploadedFile | null;
+    cashflow: UploadedFile | null;
+  }>({
+    proforma: null,
+    inventory_logistics: null,
+    cashflow: null,
+  });
   // Loading state for initial file fetch
   const [loading, setLoading] = useState(true);
   // Upload in-progress flag
@@ -41,6 +59,13 @@ const Playground = () => {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   // Reference to hidden file input element
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Replace dialog state
+  const [replaceDialog, setReplaceDialog] = useState<{
+    open: boolean;
+    fileId: string;
+    fileName: string;
+    coreFileType: "proforma" | "inventory_logistics" | "cashflow";
+  } | null>(null);
   const navigate = useNavigate();
 
   // Fetch user's files on component mount
@@ -75,7 +100,17 @@ const Playground = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setFiles(data || []);
+      
+      // Separate core files from regular files
+      const regularFiles = data?.filter(f => !f.is_core_file) || [];
+      const coreFilesData = data?.filter(f => f.is_core_file) || [];
+      
+      setFiles(regularFiles);
+      setCoreFiles({
+        proforma: coreFilesData.find(f => f.core_file_type === "proforma") || null,
+        inventory_logistics: coreFilesData.find(f => f.core_file_type === "inventory_logistics") || null,
+        cashflow: coreFilesData.find(f => f.core_file_type === "cashflow") || null,
+      });
     } catch (error: any) {
       console.error("Error fetching files:", error);
       const msg = error?.message || "";
@@ -283,6 +318,89 @@ const Playground = () => {
     }
   };
 
+  const handleMoveToCore = (fileId: string, fileName: string, coreFileType: "proforma" | "inventory_logistics" | "cashflow") => {
+    setReplaceDialog({
+      open: true,
+      fileId,
+      fileName,
+      coreFileType,
+    });
+  };
+
+  const confirmReplaceCore = async () => {
+    if (!replaceDialog) return;
+
+    try {
+      const { fileId, coreFileType } = replaceDialog;
+
+      // If there's an existing core file of this type, unset it
+      const existingCoreFile = coreFiles[coreFileType];
+      if (existingCoreFile) {
+        await supabase
+          .from("uploaded_files")
+          .update({ is_core_file: false, core_file_type: null })
+          .eq("id", existingCoreFile.id);
+      }
+
+      // Set the new file as core
+      const { error } = await supabase
+        .from("uploaded_files")
+        .update({ 
+          is_core_file: true, 
+          core_file_type: coreFileType 
+        })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      toast.success(`File set as ${coreFileType.replace('_', ' ')} core file`);
+      fetchFiles();
+    } catch (error) {
+      console.error("Error setting core file:", error);
+      toast.error("Failed to set core file");
+    } finally {
+      setReplaceDialog(null);
+    }
+  };
+
+  const renderCoreFileSlot = (
+    type: "proforma" | "inventory_logistics" | "cashflow",
+    label: string
+  ) => {
+    const file = coreFiles[type];
+
+    return (
+      <div className="border-2 border-dashed rounded-lg p-6 min-h-[120px] flex items-center justify-center">
+        {file ? (
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-3">
+              <Lock className="h-6 w-6 text-muted-foreground" />
+              <div>
+                <p className="font-semibold">{file.file_name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Set as core on {new Date(file.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate(`/playground/${file.id}`)}
+            >
+              View
+            </Button>
+          </div>
+        ) : (
+          <div className="text-center text-muted-foreground">
+            <FileSpreadsheet className="h-12 w-12 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No {label} file set</p>
+            <p className="text-xs mt-1">Select a file from "Your Files" to set as core</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <AuthLayout>
       <div className="container py-8 max-w-6xl">
@@ -331,6 +449,34 @@ const Playground = () => {
         <div className="grid gap-6 mb-6">
           <Card>
             <CardHeader>
+              <div className="flex items-center gap-2">
+                <Lock className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <CardTitle>Core Files</CardTitle>
+                  <CardDescription>
+                    Protected files that feed dashboard data. Only updatable by Olivia via APIs.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium mb-2">Proforma File</h3>
+                {renderCoreFileSlot("proforma", "Proforma")}
+              </div>
+              <div>
+                <h3 className="text-sm font-medium mb-2">Inventory Logistics File</h3>
+                {renderCoreFileSlot("inventory_logistics", "Inventory Logistics")}
+              </div>
+              <div>
+                <h3 className="text-sm font-medium mb-2">Cashflow File</h3>
+                {renderCoreFileSlot("cashflow", "Cashflow")}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Your Files</CardTitle>
@@ -373,6 +519,30 @@ const Playground = () => {
                         >
                           Open Editor
                         </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={() => handleMoveToCore(file.id, file.file_name, "proforma")}
+                            >
+                              Set as Proforma
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleMoveToCore(file.id, file.file_name, "inventory_logistics")}
+                            >
+                              Set as Inventory Logistics
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleMoveToCore(file.id, file.file_name, "cashflow")}
+                            >
+                              Set as Cashflow
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button 
                           variant="ghost" 
                           size="sm"
@@ -388,6 +558,17 @@ const Playground = () => {
             </CardContent>
           </Card>
         </div>
+
+        {replaceDialog && (
+          <ReplaceFileDialog
+            open={replaceDialog.open}
+            onOpenChange={(open) => !open && setReplaceDialog(null)}
+            onConfirm={confirmReplaceCore}
+            coreFileType={replaceDialog.coreFileType}
+            existingFileName={coreFiles[replaceDialog.coreFileType]?.file_name}
+            newFileName={replaceDialog.fileName}
+          />
+        )}
       </div>
     </AuthLayout>
   );
