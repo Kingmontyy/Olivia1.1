@@ -107,33 +107,6 @@ const Dashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Ask Olivia</CardTitle>
-                  <CardDescription>Get AI insights about your performance data</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="bg-muted/30 p-4 rounded-lg">
-                      <p className="text-sm">What was my net profit last quarter?</p>
-                    </div>
-                    <div className="bg-primary/10 p-4 rounded-lg">
-                      <p className="text-sm">Your net profit for Q4 2024 was $254,000, representing a 15% increase from Q3.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      placeholder="Ask Olivia a question..."
-                      className="flex-1 px-4 py-2 border rounded-lg"
-                    />
-                    <button className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
-                      Ask
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
             </TabsContent>
 
             <TabsContent value="daily">
