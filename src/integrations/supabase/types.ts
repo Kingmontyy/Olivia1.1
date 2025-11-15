@@ -182,32 +182,38 @@ export type Database = {
       }
       uploaded_files: {
         Row: {
+          core_file_type: string | null
           created_at: string | null
           edited_data: Json | null
           file_name: string
           file_type: string
           file_url: string
           id: string
+          is_core_file: boolean | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          core_file_type?: string | null
           created_at?: string | null
           edited_data?: Json | null
           file_name: string
           file_type: string
           file_url: string
           id?: string
+          is_core_file?: boolean | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          core_file_type?: string | null
           created_at?: string | null
           edited_data?: Json | null
           file_name?: string
           file_type?: string
           file_url?: string
           id?: string
+          is_core_file?: boolean | null
           updated_at?: string | null
           user_id?: string
         }
