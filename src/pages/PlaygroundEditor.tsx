@@ -1793,9 +1793,9 @@ const handleFormulaBarChange = (value: string) => {
           )}
         </div>
 
-        {/* Scrollable Content Section */}
+        {/* Scrollable Content Section - PREVENTS PAGE SCROLL */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Main Grid - Scrollable */}
+          {/* Main Grid - ENABLES GRID-ONLY SCROLL*/}
           <div className="flex-1 overflow-auto">
             <HotTable
               ref={hotRef}
