@@ -1803,7 +1803,7 @@ const handleFormulaBarChange = (value: string) => {
               colHeaders={true}
               rowHeaders={true}
               width="100%"
-              height={gridHeight}
+              /* height={gridHeight} */
               licenseKey="non-commercial-and-evaluation"
               stretchH="all"
               manualColumnResize={true}
