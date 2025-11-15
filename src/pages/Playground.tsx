@@ -296,9 +296,10 @@ const Playground = () => {
         return;
       }
 
-      // Create a blank workbook
+      // Create a blank workbook with a 100x26 grid (like Google Sheets)
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([[""]]);
+      const emptyData = Array(100).fill(null).map(() => Array(26).fill(""));
+      const ws = XLSX.utils.aoa_to_sheet(emptyData);
       XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
 
       // Convert to blob
