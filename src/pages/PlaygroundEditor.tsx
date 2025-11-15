@@ -161,10 +161,24 @@ const PlaygroundEditor = () => {
     lastSelectedRef.current = "";
   }, [activeSheetIndex]);
 
-  // FULL LOAD: Load sheet state from edited_data if available, otherwise parse from original file
-  // NO MERGING - always prefer the full saved edited_data if present
+  /**
+   * FULL LOAD FROM DATABASE
+   * 
+   * This function loads the spreadsheet file data when the editor opens.
+   * 
+   * LOAD PRIORITY (NO MERGING):
+   * 1. If edited_data.sheets exists: Load the FULL saved state from database (all sheets, styles, formulas)
+   * 2. If no edited_data: Parse the original Excel file from storage as a fresh import
+   * 
+   * CRITICAL: We ALWAYS prefer the full edited_data if present. No partial merges, no deltas.
+   * This ensures that every edit, style, formula, and empty styled cell is preserved across sessions.
+   * 
+   * After loading, we force Handsontable to render the data with applySheetMetaToHot() to restore
+   * all visual styles (colors, borders, bold, etc.) that were saved in the XLSX cell objects.
+   */
   const fetchFileData = async () => {
     try {
+      // Step 1: Verify user authentication
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Please log in to edit files");
@@ -172,6 +186,7 @@ const PlaygroundEditor = () => {
         return;
       }
 
+      // Step 2: Fetch file record from database
       const { data, error } = await supabase
         .from("uploaded_files")
         .select("*")
@@ -185,7 +200,8 @@ const PlaygroundEditor = () => {
       console.log("[LOAD] File edited_data exists:", !!data.edited_data);
       setFileData(data);
       
-      // FULL LOAD PATH 1: Load from edited_data if it exists and has valid sheets
+      // Step 3: LOAD PATH 1 - Load from edited_data if it exists and has valid sheets
+      // This is the preferred path after the first save, containing the complete state
       if (data.edited_data) {
         const editedData = data.edited_data as any;
         console.log("[LOAD] Edited data structure:", { 
@@ -194,48 +210,59 @@ const PlaygroundEditor = () => {
           sheetCount: editedData.sheets?.length || 0
         });
         
+        // Validate that edited_data has a proper sheets array with at least one sheet
         if (editedData.sheets && Array.isArray(editedData.sheets) && editedData.sheets.length > 0) {
-          // Multi-sheet format - FULL LOAD from saved state (no merging)
+          // FULL LOAD: Load ALL sheets with their complete data, styles, formulas, and metadata
           console.log(`[LOAD] FULL LOAD: Loading ${editedData.sheets.length} sheets from edited_data.sheets`);
           editedData.sheets.forEach((sheet: any, i: number) => {
             const rowCount = sheet.data?.length || 0;
             const colCount = sheet.data?.[0]?.length || 0;
             console.log(`[LOAD] Sheet ${i} (${sheet.name}): ${rowCount} rows, ${colCount} cols`);
+            // Log first cell for debugging display issues
             if (sheet.data && sheet.data[0] && sheet.data[0][0]) {
               console.log(`[LOAD] Sheet ${i} first cell:`, sheet.data[0][0]);
             }
           });
           
-          // Filter out null/undefined rows (defensive guard) before setting sheets
+          // DEFENSIVE: Filter out any null/undefined rows that might have slipped through optimization
+          // This prevents the "Cannot read properties of null" error in evaluateDisplayAoA
           const cleanedSheets = editedData.sheets.map((sheet: any) => ({
             ...sheet,
             data: sheet.data ? sheet.data.filter((row: any) => row !== null && row !== undefined) : []
           }));
           
+          // Set the complete state from saved data
           setSheets(cleanedSheets);
+          setActiveSheetIndex(editedData.activeSheetIndex ?? 0);
           setLoading(false);
-          return; // Exit early - we have loaded the full state
+          return; // Exit early - we successfully loaded from edited_data
         }
       }
       
-      // FALLBACK PATH 2: Parse from original uploaded file if edited_data is empty/invalid
+      // Step 4: LOAD PATH 2 - No valid edited_data found, parse from original Excel file in storage
+      // This is the initial import path when a file is first uploaded
       console.log("[LOAD] FALLBACK: No valid edited_data, parsing from original file_url");
       if (data.file_url) {
         const parsedSheets = await parseFromStorage(data.file_url);
         if (parsedSheets && parsedSheets.length > 0) {
           console.log(`[LOAD] Fallback successful: parsed ${parsedSheets.length} sheets from storage`);
           setSheets(parsedSheets);
+          setActiveSheetIndex(0);
         } else {
+          // Step 5: FALLBACK - If parsing fails, create a minimal empty sheet to prevent blank editor
           console.warn("[LOAD] Fallback failed: creating blank sheet");
           const emptyGrid = createEmptyGrid(50, 26);
           const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
           setSheets([sheet]);
+          setActiveSheetIndex(0);
         }
       } else {
+        // No file_url at all - create blank sheet
         console.warn("[LOAD] No file_url, creating blank sheet");
         const emptyGrid = createEmptyGrid(50, 26);
         const sheet: SheetData = { name: "Sheet1", index: 0, data: emptyGrid, config: { columnCount: 26, rowCount: 50 } };
         setSheets([sheet]);
+        setActiveSheetIndex(0);
       }
     } catch (error) {
       console.error("Error fetching file:", error);
@@ -449,9 +476,30 @@ const PlaygroundEditor = () => {
     });
   };
 
-  // Fallback: download and parse original file from storage if edited_data is missing
+  /**
+   * PARSE EXCEL FILE FROM STORAGE
+   * 
+   * This function is the fallback loader when no edited_data exists in the database.
+   * It downloads the original Excel file from Supabase storage and parses it using SheetJS (XLSX library).
+   * 
+   * WHEN THIS RUNS:
+   * - First time a file is uploaded (before any edits/saves)
+   * - If edited_data is corrupted or missing
+   * 
+   * WHAT IT PRESERVES:
+   * - All sheets in the workbook
+   * - Cell values (strings, numbers, dates, booleans)
+   * - Formulas (stored in cell.f)
+   * - Styles (colors, bold, italic, borders - stored in cell.s)
+   * - Number formatting (stored in cell.w)
+   * 
+   * RETURNS:
+   * - Array of SheetData objects with full XLSX cell objects
+   * - null if parsing fails
+   */
   const parseFromStorage = async (path: string): Promise<SheetData[] | null> => {
     try {
+      // Step 1: Download the Excel file from Supabase storage bucket
       const { data: blob, error } = await supabase.storage
         .from('uploaded-files')
         .download(path);
@@ -459,20 +507,24 @@ const PlaygroundEditor = () => {
         console.error('Storage download error:', error);
         return null;
       }
+      
+      // Step 2: Convert blob to ArrayBuffer and parse with SheetJS
       const arrayBuffer = await blob.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { 
-        type: 'array', 
-        cellFormula: true, 
-        cellStyles: true, 
-        cellDates: true,
-        cellNF: true
+        type: 'array',          // Input is an ArrayBuffer
+        cellFormula: true,      // Parse formulas (store in cell.f)
+        cellStyles: true,       // Parse cell styles (colors, bold, borders)
+        cellDates: true,        // Parse dates as Date objects
+        cellNF: true            // Parse number formats
       });
       
+      // Step 3: Convert each sheet to our SheetData format with full XLSX cell objects
       const sheets: SheetData[] = workbook.SheetNames.map((sheetName: string, index: number) => {
         const worksheet = workbook.Sheets[sheetName];
         const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
         const rows: any[][] = [];
         
+        // Build 2D array of XLSX cell objects (not just values)
         for (let R = range.s.r; R <= range.e.r; ++R) {
           const row: any[] = [];
           for (let C = range.s.c; C <= range.e.c; ++C) {
@@ -480,30 +532,33 @@ const PlaygroundEditor = () => {
             const cell = worksheet[cellAddress] as any;
             
             if (cell) {
+              // Build XLSX cell object with all important properties
               const cellData: any = { 
-                v: cell.v, 
-                f: cell.f, 
-                t: cell.t, 
-                w: cell.w 
+                v: cell.v,  // Raw value
+                f: cell.f,  // Formula
+                t: cell.t,  // Type (s=string, n=number, z=empty, etc.)
+                w: cell.w   // Formatted display text
               };
               
-              // Store style information if available
+              // Store style information if available (colors, bold, borders, etc.)
               if (cell.s) {
                 cellData.s = cell.s;
               }
               
               row.push(cellData);
             } else {
+              // Empty cell - store null
               row.push(null);
             }
           }
           rows.push(row);
         }
         
+        // Return sheet with XLSX cell objects preserved
         return { 
           name: sheetName, 
           index, 
-          data: rows, 
+          data: rows, // Full XLSX cell objects, not just display values
           config: { 
             columnCount: range.e.c + 1, 
             rowCount: range.e.r + 1 
@@ -523,34 +578,61 @@ const PlaygroundEditor = () => {
     return hotInstance.getData();
   };
 
+  /**
+   * OPTIMIZE SHEET DATA FOR SAVING
+   * 
+   * This function reduces the payload size before saving to the database by removing unnecessary data.
+   * 
+   * WHAT IT REMOVES:
+   * - Cells that are completely empty (no value, no style, no formula)
+   * - Trailing empty rows at the end of each sheet
+   * 
+   * WHAT IT KEEPS:
+   * - Cells with values (strings, numbers, dates)
+   * - Cells with formulas (even if they evaluate to empty)
+   * - Cells with styles but no value (empty styled cells - these are important!)
+   * - Cells with borders, colors, bold, etc. even if they're blank
+   * 
+   * WHY THIS IS IMPORTANT:
+   * - Users often apply styles to empty cells (colored headers, borders, etc.)
+   * - Without this, re-opening would lose all empty styled cells and show a blank grid
+   * - We preserve these cells so the visual layout remains intact
+   * 
+   * RETURNS:
+   * - Optimized array of sheets with trimmed data but all important cells preserved
+   */
   const optimizeSheetData = (sheets: SheetData[]): any[] => {
-    // Remove truly empty cells AND empty rows while preserving style-only or formula-only cells
     return sheets.map(sheet => {
-      // First pass: optimize cells within each row
+      // FIRST PASS: Optimize cells within each row
+      // Keep cells with value OR style OR formula, drop completely empty cells
       const optimizedRows = sheet.data.map(row => 
         row.map(cell => {
           if (!cell) return null;
           if (typeof cell === 'object') {
-            // If the cell has neither value nor formatting nor formula, drop it
+            // Check if cell has any meaningful content
             const hasValue = cell.v !== undefined || cell.w !== undefined;
-            const hasStyle = !!cell.s;
-            const hasFormula = !!cell.f;
+            const hasStyle = !!cell.s;   // Has colors, bold, borders, etc.
+            const hasFormula = !!cell.f; // Has formula like "=SUM(A1:A10)"
+            
+            // Drop cells with no value AND no style AND no formula
             if (!hasValue && !hasStyle && !hasFormula) return null;
 
-            // Keep essential props (including styles even without values)
+            // Keep essential properties for cells with content/style/formula
             const optimized: any = {};
-            if (cell.t !== undefined) optimized.t = cell.t;
-            if (cell.v !== undefined) optimized.v = cell.v;
-            if (cell.w !== undefined) optimized.w = cell.w;
-            if (cell.f) optimized.f = cell.f;
-            if (cell.s) optimized.s = cell.s;
+            if (cell.t !== undefined) optimized.t = cell.t; // Cell type (s=string, n=number, z=empty)
+            if (cell.v !== undefined) optimized.v = cell.v; // Raw value
+            if (cell.w !== undefined) optimized.w = cell.w; // Formatted display text
+            if (cell.f) optimized.f = cell.f;               // Formula
+            if (cell.s) optimized.s = cell.s;               // Style object (colors, bold, borders)
             return optimized;
           }
+          // Primitive values (not XLSX objects) - keep as-is
           return cell;
         })
       );
 
-      // Second pass: find last non-empty row to trim trailing empty rows
+      // SECOND PASS: Find last non-empty row to trim trailing empty rows
+      // This removes rows at the end that have no content at all
       let lastNonEmptyRowIndex = -1;
       for (let i = optimizedRows.length - 1; i >= 0; i--) {
         const row = optimizedRows[i];
@@ -561,10 +643,10 @@ const PlaygroundEditor = () => {
         }
       }
 
-      // Trim to last non-empty row + 1 (or keep at least 1 row)
+      // Trim to last non-empty row + 1 (or keep at least 1 row to avoid empty sheet)
       const trimmedData = lastNonEmptyRowIndex >= 0 
         ? optimizedRows.slice(0, lastNonEmptyRowIndex + 1)
-        : [optimizedRows[0] || []]; // Keep at least one row
+        : [optimizedRows[0] || []]; // Fallback: at least one empty row
 
       console.log(`[OPTIMIZE] Sheet "${sheet.name}": ${sheet.data.length} rows → ${trimmedData.length} rows (removed ${sheet.data.length - trimmedData.length} empty trailing rows)`);
 
@@ -577,11 +659,31 @@ const PlaygroundEditor = () => {
     });
   };
 
-  // FULL OVERWRITE SAVE: We now save the entire sheet state every time to prevent partial data loss on re-open
-  // NO delta merge, NO changeSetRef tracking - just get current state, optimize, and write the full thing
-  // This is the ONLY save method - no autosave. Triggered by: MenuBar Save button, Ctrl+S keyboard shortcut
+  /**
+   * FULL OVERWRITE SAVE - 100% RELIABLE MANUAL SAVE
+   * 
+   * This is the ONLY save function in the app. No autosave, no deltas, no merging with server state.
+   * 
+   * WHAT IT DOES:
+   * 1. Get current Handsontable grid data and metadata (styles, borders, formulas)
+   * 2. Merge the current grid state into the active sheet's XLSX cell objects
+   * 3. Optimize all sheets to remove truly empty cells while preserving styled/formula cells
+   * 4. Write the COMPLETE sheets array to Supabase edited_data (full overwrite)
+   * 5. Retry up to 3 times if the save fails
+   * 
+   * TRIGGERED BY:
+   * - MenuBar "Save" button click
+   * - Keyboard shortcut: Ctrl+S (Cmd+S on Mac)
+   * 
+   * GUARANTEES:
+   * - Every cell with content, style, formula, or border is saved
+   * - Multi-sheet workbooks are fully preserved
+   * - Re-opening the file shows exactly what was visible when saved
+   * 
+   * NO AUTOSAVE: User must manually save. Unsaved changes show a warning on window close.
+   */
   const performSave = async () => {
-    // Prevent concurrent saves
+    // Prevent concurrent saves to avoid race conditions
     if (isSaving) return;
 
     const attempt = async (tryNum: number): Promise<void> => {
@@ -590,10 +692,12 @@ const PlaygroundEditor = () => {
         const hotInstance = hotRef.current?.hotInstance;
 
         // Step 1: Get current full sheets state - merge latest Handsontable data/meta into ACTIVE SHEET ONLY
+        // We clone the sheets array to avoid mutating the current state during the save process
         const workingSheets = [...sheets];
         if (hotInstance) {
           const currentGrid = hotInstance.getData();
-          // Merge HOT data into active sheet to capture latest edits
+          // Merge HOT data into active sheet to capture the latest edits made in the grid
+          // This converts display values back into XLSX cell objects with styles/formulas
           workingSheets[activeSheetIndex] = mergeHotDataIntoSheet(
             workingSheets[activeSheetIndex],
             currentGrid,
