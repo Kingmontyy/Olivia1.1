@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      cogs_history: {
+        Row: {
+          cogs: number
+          id: string
+          quantity: number
+          recorded_at: string | null
+          sku_id: string
+          total_value: number
+          user_id: string
+        }
+        Insert: {
+          cogs: number
+          id?: string
+          quantity: number
+          recorded_at?: string | null
+          sku_id: string
+          total_value: number
+          user_id: string
+        }
+        Update: {
+          cogs?: number
+          id?: string
+          quantity?: number
+          recorded_at?: string | null
+          sku_id?: string
+          total_value?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cogs_history_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "skus"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       favorites: {
         Row: {
           created_at: string | null
@@ -37,6 +75,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      inventory: {
+        Row: {
+          cogs: number
+          created_at: string | null
+          current_quantity: number
+          days_remaining: number | null
+          id: string
+          last_updated: string | null
+          sku_id: string
+          total_cogs: number | null
+          user_id: string
+          velocity: number
+        }
+        Insert: {
+          cogs?: number
+          created_at?: string | null
+          current_quantity?: number
+          days_remaining?: number | null
+          id?: string
+          last_updated?: string | null
+          sku_id: string
+          total_cogs?: number | null
+          user_id: string
+          velocity?: number
+        }
+        Update: {
+          cogs?: number
+          created_at?: string | null
+          current_quantity?: number
+          days_remaining?: number | null
+          id?: string
+          last_updated?: string | null
+          sku_id?: string
+          total_cogs?: number | null
+          user_id?: string
+          velocity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_sku_id_fkey"
+            columns: ["sku_id"]
+            isOneToOne: false
+            referencedRelation: "skus"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -62,6 +147,36 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      skus: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          sku_code: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          sku_code: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          sku_code?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
