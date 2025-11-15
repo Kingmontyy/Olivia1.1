@@ -98,12 +98,48 @@ const Dashboard = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Monthly Trends</CardTitle>
-                  <CardDescription>Revenue and profit over time</CardDescription>
+                  <CardTitle>Proforma Quick View</CardTitle>
+                  <CardDescription>Projected financial overview</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64 flex items-center justify-center border rounded-lg bg-muted/30">
-                    <p className="text-muted-foreground">Chart visualization placeholder</p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="font-semibold text-muted-foreground">Line Item</div>
+                      <div className="font-semibold text-muted-foreground text-right">Projected</div>
+                      <div className="font-semibold text-muted-foreground text-right">Actual</div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-4 text-sm py-2 border-b">
+                        <div>Revenue</div>
+                        <div className="text-right font-mono">$450K</div>
+                        <div className="text-right font-mono">$428K</div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4 text-sm py-2 border-b">
+                        <div>Cost of Sales</div>
+                        <div className="text-right font-mono">$180K</div>
+                        <div className="text-right font-mono">$175K</div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4 text-sm py-2 border-b">
+                        <div>Gross Profit</div>
+                        <div className="text-right font-mono">$270K</div>
+                        <div className="text-right font-mono">$253K</div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4 text-sm py-2 border-b">
+                        <div>Operating Expenses</div>
+                        <div className="text-right font-mono">$165K</div>
+                        <div className="text-right font-mono">$166K</div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4 text-sm py-2 border-t-2 font-semibold">
+                        <div>Net Profit</div>
+                        <div className="text-right font-mono">$105K</div>
+                        <div className="text-right font-mono">$87K</div>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
