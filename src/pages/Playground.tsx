@@ -1,5 +1,7 @@
 // Core React hooks for state and lifecycle management
 import { useState, useEffect, useRef } from "react";
+// XLSX library for creating blank spreadsheets
+import * as XLSX from "xlsx";
 // Layout wrapper with authentication checks
 import { AuthLayout } from "@/components/AuthLayout";
 // UI components for cards and buttons
@@ -286,6 +288,60 @@ const Playground = () => {
     }
   };
 
+  const handleCreateBlankSheet = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please log in to create files");
+        return;
+      }
+
+      // Create a blank workbook
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([[""]]);
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+      // Convert to blob
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      const fileName = `${user.id}/${Date.now()}.xlsx`;
+      const displayName = `Untitled-${Date.now()}.xlsx`;
+
+      // Upload to storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('uploaded-files')
+        .upload(fileName, blob, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+      // Create database record
+      const { error: dbError } = await supabase
+        .from("uploaded_files")
+        .insert({
+          user_id: user.id,
+          file_name: displayName,
+          file_type: 'xlsx',
+          file_url: uploadData.path,
+          edited_data: null
+        });
+
+      if (dbError) {
+        await supabase.storage.from('uploaded-files').remove([fileName]);
+        throw new Error(`Database error: ${dbError.message}`);
+      }
+
+      toast.success("Blank sheet created!");
+      fetchFiles();
+    } catch (error: any) {
+      console.error("Error creating blank sheet:", error);
+      toast.error(error.message || "Failed to create blank sheet");
+    }
+  };
+
   const handleDelete = async (fileId: string, fileName: string, fileUrl: string) => {
     try {
       console.log('Deleting file:', fileId, fileUrl);
@@ -482,7 +538,7 @@ const Playground = () => {
                   <CardTitle>Your Files</CardTitle>
                   <CardDescription>Uploaded and edited spreadsheets</CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleCreateBlankSheet}>
                   <Plus className="mr-2 h-4 w-4" />
                   Create Blank Sheet
                 </Button>
