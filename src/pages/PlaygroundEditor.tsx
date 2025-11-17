@@ -1864,12 +1864,17 @@ const handleFormulaBarChange = (value: string) => {
                   let cellObj: any = ensureCellObj(dataClone[row]?.[col]);
 
                   // Handle formulas
-                  //if (typeof newVal === 'string' && newVal.trim().startsWith('=')) {
-                    //cellObj.f = newVal.trim().slice(1);
-                    //delete cellObj.v;
-                    //cellObj.w = '';
-                  //} 
-                if (newVal === null || newVal === '') {
+                  if (typeof newVal === 'string' && newVal.trim().startsWith('=')) {
+                    cellObj.f = newVal.trim().slice(1);
+                    delete cellObj.v;
+                    cellObj.w = '';
+                    cellObj.t= 'n';
+
+                    if (hasStyleMeta) {
+                      applyMetaToStyle(cellObj);
+                    }
+                  } 
+                else if (newVal === null || newVal === '') {
                     // Clear value - keep style-only cells if meta exists
                     delete cellObj.v;
                     cellObj.w = '';
