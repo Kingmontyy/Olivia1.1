@@ -16,6 +16,7 @@ import { HotTable } from "@handsontable/react";
 import { registerAllModules } from "handsontable/registry";
 import "handsontable/dist/handsontable.full.min.css";
 import Handsontable from "handsontable";
+import { HyperFormula } from "hyperformula";
 // Icons
 import { Plus, Trash2 } from "lucide-react";
 // SheetJS library for Excel file operations
@@ -1863,11 +1864,12 @@ const handleFormulaBarChange = (value: string) => {
                   let cellObj: any = ensureCellObj(dataClone[row]?.[col]);
 
                   // Handle formulas
-                  if (typeof newVal === 'string' && newVal.trim().startsWith('=')) {
-                    cellObj.f = newVal.trim().slice(1);
-                    delete cellObj.v;
-                    cellObj.w = '';
-                  } else if (newVal === null || newVal === '') {
+                  //if (typeof newVal === 'string' && newVal.trim().startsWith('=')) {
+                    //cellObj.f = newVal.trim().slice(1);
+                    //delete cellObj.v;
+                    //cellObj.w = '';
+                  //} 
+                if (newVal === null || newVal === '') {
                     // Clear value - keep style-only cells if meta exists
                     delete cellObj.v;
                     cellObj.w = '';
@@ -1903,6 +1905,12 @@ const handleFormulaBarChange = (value: string) => {
               }}
               undo={true}
               mergeCells={true}
+              formulas={{
+    // Let Handsontable create & manage the HyperFormula engine.
+    engine: HyperFormula,
+    sheetName: sheets[activeSheetIndex]?.name ?? "Sheet1",
+    sheetId: activeSheetIndex,
+  }}
 cells={(row: number, col: number) => {
                 const cellProperties: any = { renderer: styledRenderer };
                 const sheet = sheets[activeSheetIndex];
